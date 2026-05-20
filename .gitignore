@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+.env
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+*.log
+npm-debug.log*
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
