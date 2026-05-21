@@ -1,4 +1,3 @@
 opik>=1.0.0
 uuid6
 socksio
-pytest>=7.0
