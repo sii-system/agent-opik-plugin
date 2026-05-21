@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py UserPromptSubmit"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py UserPromptSubmit"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PostToolUse"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py PostToolUse"
           }
         ]
       }
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PostToolUseFailure"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py PostToolUseFailure"
           }
         ]
       }
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PreCompact"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py PreCompact"
           }
         ]
       }
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py Stop"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py Stop"
           }
         ]
       }
@@ -55,7 +55,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SubagentStart"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py SubagentStart"
           }
         ]
       }
@@ -65,7 +65,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SubagentStop"
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py SubagentStop"
           }
         ]
       }
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -lc 'payload=$(mktemp /tmp/cc-opik-sessionend-XXXXXX.json); cat > \"$payload\"; nohup python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SessionEnd --payload-file \"$payload\" >/dev/null 2>&1 &'"
+            "command": "bash -lc 'payload=$(mktemp /tmp/cc-opik-sessionend-XXXXXX.json); cat > \"$payload\"; nohup python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_realtime_trace.py SessionEnd --payload-file \"$payload\" >/dev/null 2>&1 &'"
           }
         ]
       }

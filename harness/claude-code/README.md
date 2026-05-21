@@ -1,7 +1,7 @@
 # Claude Code → Opik realtime tracing
 
 Manual install. Subscribes 8 Claude Code lifecycle events to the realtime tracer
-at `src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py`.
+at `src/sii_opik_plugin/claude_code/claude_realtime_trace.py`.
 
 ## Install
 
