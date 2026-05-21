@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-# Copyright (c) Comet ML, Inc
+# Copyright 2026 Shanghai Innovation Institute
 """
 Claude Code -> Opik realtime hook.
 
