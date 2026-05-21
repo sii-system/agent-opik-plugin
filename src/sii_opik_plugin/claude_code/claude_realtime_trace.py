@@ -475,42 +475,6 @@ def fallback_session_and_transcript_for_session_end() -> tuple[str | None, Path 
     return None, None
 
 
-# ── Agent map (subagent → parent span) ────────────────────────────────────────
-
-def _agent_map_path(key: str) -> Path:
-    AGENTS_DIR.mkdir(parents=True, exist_ok=True)
-    return AGENTS_DIR / f"{key}.json"
-
-
-def load_agent_map(key: str) -> dict[str, str]:
-    path = _agent_map_path(key)
-    try:
-        if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        pass
-    return {}
-
-
-def save_agent_map(key: str, agents: dict[str, str]) -> None:
-    try:
-        path = _agent_map_path(key)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(agents), encoding="utf-8")
-        os.replace(tmp, path)
-    except Exception as exc:
-        debug(f"save_agent_map failed: {exc}")
-
-
-def delete_agent_map(key: str) -> None:
-    try:
-        path = _agent_map_path(key)
-        if path.exists():
-            path.unlink()
-    except Exception:
-        pass
-
-
 def _subagent_state_path(key: str) -> Path:
     AGENTS_DIR.mkdir(parents=True, exist_ok=True)
     return AGENTS_DIR / f"{key}_subagents.json"
@@ -533,7 +497,6 @@ class SessionState:
     trace_finalized: bool = False
     trace_start_ts: str | None = None
     last_turn_ts: str | None = None
-    span_ids: dict[str, str] | None = None
     last_flush_time: float = 0.0
     turn_number: int = 0
     turn_span_id: str | None = None
@@ -556,8 +519,6 @@ class SessionState:
     session_models: list[str] | None = None
 
     def __post_init__(self) -> None:
-        if self.span_ids is None:
-            self.span_ids = {}
         if self.session_models is None:
             self.session_models = []
 
@@ -575,7 +536,6 @@ class SubagentState:
     finished: bool = False
     parent_span_id: str | None = None
     last_end_ts: str | None = None
-    deferred_create: bool = True
 
 
 def load_subagent_states(key: str) -> dict[str, SubagentState]:
@@ -603,7 +563,6 @@ def load_subagent_states(key: str) -> dict[str, SubagentState]:
                 finished=bool(item.get("finished", False)),
                 parent_span_id=item.get("parent_span_id"),
                 last_end_ts=item.get("last_end_ts"),
-                deferred_create=bool(item.get("deferred_create", True)),
             )
         return states
     except Exception as exc:
@@ -628,7 +587,6 @@ def save_subagent_states(key: str, subagents: dict[str, SubagentState]) -> None:
                 "finished": sa.finished,
                 "parent_span_id": sa.parent_span_id,
                 "last_end_ts": sa.last_end_ts,
-                "deferred_create": sa.deferred_create,
             }
             for agent_id, sa in subagents.items()
         }
@@ -658,7 +616,6 @@ def load_session_state(global_state: dict[str, Any], key: str) -> SessionState:
         trace_finalized=bool(raw.get("trace_finalized", False)),
         trace_start_ts=raw.get("trace_start_ts"),
         last_turn_ts=raw.get("last_turn_ts"),
-        span_ids=raw.get("span_ids") if isinstance(raw.get("span_ids"), dict) else {},
         last_flush_time=float(raw.get("last_flush_time", 0.0)),
         turn_number=int(raw.get("turn_number", 0)),
         turn_span_id=raw.get("turn_span_id"),
@@ -690,7 +647,6 @@ def save_session_state(global_state: dict[str, Any], key: str, session: SessionS
         "trace_finalized": session.trace_finalized,
         "trace_start_ts": session.trace_start_ts,
         "last_turn_ts": session.last_turn_ts,
-        "span_ids": session.span_ids,
         "last_flush_time": session.last_flush_time,
         "turn_number": session.turn_number,
         "turn_span_id": session.turn_span_id,
@@ -1997,8 +1953,7 @@ def create_or_update_span_if_possible(client: Any, span_id: str, **kwargs: Any) 
         debug(f"upsert: create failed for {span_id} ({create_exc}), trying update")
         # update_span doesn't accept start_time, total_estimated_cost_version,
         # last_updated_at — strip them before the fallback call
-        _UPDATE_UNSUPPORTED = {"start_time", "last_updated_at", "total_estimated_cost_version"}
-        update_kwargs = {k: v for k, v in kwargs.items() if k not in _UPDATE_UNSUPPORTED}
+        update_kwargs = {k: v for k, v in kwargs.items() if k not in _UPDATE_SPAN_UNSUPPORTED}
         try:
             client.rest_client.spans.update_span(span_id, **update_kwargs)
         except Exception as update_exc:
@@ -2339,7 +2294,6 @@ def emit_turn_v3(
                         subagent_state.agent_span_id = agent_span_id
                         subagent_state.parent_span_id = llm_span_id
                         subagent_state.last_end_ts = tool_end.isoformat()
-                        subagent_state.deferred_create = False
 
                     if child_turns:
                         agent_scope = f"agent:{agent_id or tu.tool_use_id}"
@@ -2922,7 +2876,6 @@ def _on_session_end(
     # Keep a finalized tombstone in state to ignore any late/out-of-order hook
     # events that may arrive after SessionEnd.
     save_session_state(state, key, session)
-    delete_agent_map(key)
     delete_subagent_states(key)
     save_state(state)
     debug("SessionEnd: finalized")
@@ -2975,9 +2928,6 @@ def _on_subagent_start(
         save_subagent_states(key, subagents)
         return
 
-    agents = load_agent_map(key)
-    agents[agent_id] = ""
-    save_agent_map(key, agents)
     subagents[agent_id] = SubagentState(
         agent_id=agent_id,
         agent_type=agent_type,
@@ -2985,7 +2935,6 @@ def _on_subagent_start(
         transcript_path=str(transcript) if transcript else "",
         started_at=started_at,
         parent_span_id=session.turn_span_id or trace_id,
-        deferred_create=True,
     )
     save_subagent_states(key, subagents)
 
@@ -3020,7 +2969,6 @@ def _on_subagent_stop(
             transcript_path=str(resolved) if resolved else "",
             started_at=started_at,
             parent_span_id=session.turn_span_id or session_trace_id(session),
-            deferred_create=True,
         )
         subagents[agent_id] = subagent
     elif agent_type and not subagent.agent_type:
@@ -3062,7 +3010,6 @@ def _on_subagent_stop(
             },
             tags=["sub-agent", *([f"agent-type:{subagent.agent_type}"] if subagent.agent_type else [])],
         )
-        subagent.deferred_create = False
         debug(f"SubagentStop: force-created deferred agent span {subagent.agent_span_id}")
 
     _emit_subagent_turns(
@@ -3341,7 +3288,6 @@ def main() -> int:
             # Ignore late/out-of-order events after trace has already been finalized.
             if session.trace_finalized and event_name not in ("UserPromptSubmit",):
                 if event_name == "SessionEnd":
-                    delete_agent_map(key)
                     delete_subagent_states(key)
                     save_session_state(state, key, session)
                     save_state(state)
