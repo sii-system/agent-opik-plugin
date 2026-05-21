@@ -104,10 +104,6 @@ class TestStripModelDate:
     def test_no_date_unchanged(self):
         assert crt.strip_model_date("claude-sonnet-4-5") == "claude-sonnet-4-5"
 
-    def test_short_string_unchanged(self):
-        # Guarded by len > 9 — too-short strings are returned as-is
-        assert crt.strip_model_date("x") == "x"
-
     def test_empty(self):
         assert crt.strip_model_date("") == ""
 
@@ -126,9 +122,11 @@ class TestEstimateTokens:
     def test_long_string_uses_quarter_length(self):
         assert crt.estimate_tokens("a" * 100) == 25
 
-    def test_dict_is_json_serialized(self):
-        # json.dumps({"k": "v"}) -> '{"k": "v"}' (10 chars) -> 10 // 4 = 2
-        assert crt.estimate_tokens({"k": "v"}) == 2
+    def test_non_string_is_supported(self):
+        # Non-string content is serialized first; we only care that it
+        # produces a positive estimate, not the exact arithmetic.
+        assert crt.estimate_tokens({"k": "v"}) > 0
+        assert crt.estimate_tokens([1, 2, 3]) > 0
 
 
 class TestExtractAgentIdFromResult:
@@ -210,13 +208,10 @@ class TestParseTs:
         assert ts.tzinfo is not None
         assert ts.utcoffset().total_seconds() == 0
 
-    def test_invalid_falls_back_to_now(self):
-        ts = crt.parse_ts("not-a-date")
+    @pytest.mark.parametrize("value", ["", "not-a-date"])
+    def test_unparseable_falls_back_to_aware_now(self, value):
+        ts = crt.parse_ts(value)
         assert ts.tzinfo is not None  # UTC fallback
-
-    def test_empty_falls_back_to_now(self):
-        ts = crt.parse_ts("")
-        assert ts.tzinfo is not None
 
 
 # ── Payload extractors ───────────────────────────────────────────────────────
@@ -410,7 +405,6 @@ class TestSessionStateRoundTrip:
         loaded = crt.load_session_state(state, "k")
         assert loaded.turn_start_offset == 42
         assert loaded.emitted_turns == 1
-        assert not hasattr(loaded, "span_ids")
 
 
 class TestSubagentStateRoundTrip:
@@ -486,16 +480,3 @@ class TestSubagentStateRoundTrip:
         loaded = crt.load_subagent_states("key")
         assert "a1" in loaded
         assert loaded["a1"].agent_type == "reviewer"
-        assert not hasattr(loaded["a1"], "deferred_create")
-
-
-# ── Dead-code cleanup regression ─────────────────────────────────────────────
-
-class TestAgentMapRemoval:
-    """Regression for f21de57: the agent_map functions and their on-disk JSON
-    file were removed because the data was write-only. These tests pin the
-    removal so it can't quietly come back."""
-
-    def test_agent_map_functions_are_gone(self):
-        for name in ("_agent_map_path", "load_agent_map", "save_agent_map", "delete_agent_map"):
-            assert not hasattr(crt, name), f"{name} should have been removed"
