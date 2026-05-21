@@ -1,0 +1,84 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PostToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PostToolUseFailure"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py PreCompact"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py Stop"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SubagentStart"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SubagentStop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -lc 'payload=$(mktemp /tmp/cc-opik-sessionend-XXXXXX.json); cat > \"$payload\"; nohup python3 /ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/claude_code/claude_code_realtime_hook.py SessionEnd --payload-file \"$payload\" >/dev/null 2>&1 &'"
+          }
+        ]
+      }
+    ]
+  }
+}
