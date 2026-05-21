@@ -44,3 +44,19 @@ Delete the 8 event entries from your `settings.json`.
 - The hook script reads its event payload from stdin and the event name from
   argv[1]. No env vars are required by the hook itself; Opik credentials are
   picked up from the standard `OPIK_*` environment variables.
+
+## Development
+
+From the repo root:
+
+```
+pip install -r requirements-dev.txt   # runtime deps + pytest
+pytest tests/
+```
+
+`requirements-dev.txt` pulls in everything from `requirements.txt` plus
+`pytest`. End users installing the hook only need `requirements.txt`.
+
+`tests/conftest.py` puts `src/` on `sys.path` so the tests can
+`from sii_opik_plugin.claude_code import claude_realtime_trace` without
+the package being pip-installed.
