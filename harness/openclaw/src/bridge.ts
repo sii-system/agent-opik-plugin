@@ -120,16 +120,16 @@ export function firePythonTracer(event: BridgeEvent, opts?: BridgeOptions): void
 
 /**
  * Resolve the default path to the Python tracer script.
- * Lives at src/sii_opik_plugin/openclaw/tracer/openclaw_opik_tracer.py
+ * Lives at src/sii_opik_plugin/openclaw/openclaw_opik_tracer.py
  * at the repo root, regardless of whether this file runs from source
  * (harness/openclaw/src/bridge.ts) or built (harness/openclaw/dist/src/bridge.js).
  */
 export function defaultScriptPath(): string {
   const candidates = [
     // Built mode: harness/openclaw/dist/src/bridge.js → up 4 → repo root
-    resolve(__dirname, "..", "..", "..", "..", "src", "sii_opik_plugin", "openclaw", "tracer", "openclaw_opik_tracer.py"),
+    resolve(__dirname, "..", "..", "..", "..", "src", "sii_opik_plugin", "openclaw", "openclaw_opik_tracer.py"),
     // Source mode: harness/openclaw/src/bridge.ts → up 3 → repo root
-    resolve(__dirname, "..", "..", "..", "src", "sii_opik_plugin", "openclaw", "tracer", "openclaw_opik_tracer.py"),
+    resolve(__dirname, "..", "..", "..", "src", "sii_opik_plugin", "openclaw", "openclaw_opik_tracer.py"),
   ];
   for (const candidate of candidates) {
     if (existsSync(candidate)) {
