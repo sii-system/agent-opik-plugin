@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from sii_opik_plugin.openclaw.tracer import openclaw_opik_tracer as oot
+from sii_opik_plugin.openclaw import openclaw_opik_tracer as oot
 
 
 # ── Env helpers ──────────────────────────────────────────────────────────────

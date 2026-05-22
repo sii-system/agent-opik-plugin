@@ -16,7 +16,7 @@ harness/openclaw/
 ├── package.json / tsconfig.json   Build config
 └── README.md                      You are here
 
-src/sii_opik_plugin/openclaw/tracer/
+src/sii_opik_plugin/openclaw/
 └── openclaw_opik_tracer.py        Python tracer (incremental JSONL parser
                                    → Opik traces / spans)
 ```
@@ -39,7 +39,7 @@ From this directory (`harness/openclaw/`):
    ```
    This produces `dist/index.js` and `dist/src/bridge.js`. The bridge
    resolves the Python tracer at
-   `<repo>/src/sii_opik_plugin/openclaw/tracer/openclaw_opik_tracer.py`
+   `<repo>/src/sii_opik_plugin/openclaw/openclaw_opik_tracer.py`
    automatically — do not move `dist/` away from this directory.
 
 2. Install the Python tracer's deps. From the repo root:
@@ -55,7 +55,7 @@ From this directory (`harness/openclaw/`):
    ```
    `--link` is required for this layout. The plugin directory contains the
    TS bridge, while the Python tracer lives at the repo root under
-   `src/sii_opik_plugin/openclaw/tracer/`. A copied install of only
+   `src/sii_opik_plugin/openclaw/`. A copied install of only
    `harness/openclaw/` will not include that tracer, so hooks will fail to
    spawn the Python script.
 
@@ -96,7 +96,7 @@ openclaw gateway restart
 
 On every registered hook, `index.ts` collects session context (agent
 id, session id, transcript path) and spawns
-`src/sii_opik_plugin/openclaw/tracer/openclaw_opik_tracer.py` detached,
+`src/sii_opik_plugin/openclaw/openclaw_opik_tracer.py` detached,
 piping the event JSON over stdin. The Python tracer:
 
 1. Reads the session JSONL transcript from `committed_offset` (resumable).
@@ -123,7 +123,7 @@ pytest tests/test_openclaw_opik_tracer.py
 ```
 
 `tests/conftest.py` puts `src/` on `sys.path` so the tests import
-`sii_opik_plugin.openclaw.tracer.openclaw_opik_tracer` without the
+`sii_opik_plugin.openclaw.openclaw_opik_tracer` without the
 package being pip-installed.
 
 For TS changes, `npm run dev` runs `tsc --watch` against `harness/openclaw/`.
