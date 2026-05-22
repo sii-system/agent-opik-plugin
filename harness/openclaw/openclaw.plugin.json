@@ -1,0 +1,55 @@
+{
+  "id": "openclaw-opik-tracer",
+  "name": "openclaw-opik-tracer",
+  "version": "0.1.0",
+  "description": "Trace openclaw sessions to Opik via incremental JSONL parsing. Uses hooks as triggers only — all data is read from session transcript files, avoiding event payload bugs.",
+  "main": "dist/index.js",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "opikUrl": {
+        "type": "string",
+        "description": "Opik API endpoint URL",
+        "default": "https://www.comet.com/opik/api"
+      },
+      "opikApiKey": {
+        "type": "string",
+        "description": "Opik API key"
+      },
+      "opikWorkspace": {
+        "type": "string",
+        "description": "Opik workspace name",
+        "default": "default"
+      },
+      "opikProjectName": {
+        "type": "string",
+        "description": "Opik project name for traces",
+        "default": "openclaw"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Tags to attach to every trace",
+        "default": []
+      },
+      "pythonPath": {
+        "type": "string",
+        "description": "Path to python3 interpreter",
+        "default": "python3"
+      },
+      "includeHistory": {
+        "type": "boolean",
+        "description": "Include conversation history in LLM span input (large payloads)",
+        "default": false
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "Log spans instead of emitting to Opik",
+        "default": false
+      }
+    }
+  }
+}
