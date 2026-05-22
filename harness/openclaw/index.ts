@@ -508,16 +508,4 @@ const plugin = {
   },
 };
 
-export const __testInternals = {
-  parseConfig,
-  resolveSessionKey,
-  resolveSessionFile,
-  buildBaseEvent,
-  buildLightEvent,
-  buildSessionStartBridgeEvent,
-  buildSubagentSpawningBridgeEvent,
-  buildSubagentDeliveryBridgeEvent,
-  rememberSessionIdentity,
-};
-
 export default plugin;

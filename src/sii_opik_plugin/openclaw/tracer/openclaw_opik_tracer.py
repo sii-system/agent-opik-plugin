@@ -1090,12 +1090,6 @@ def create_trace_if_possible(client: Any, **kwargs: Any) -> None:
         return
     client.rest_client.traces.create_trace(**kwargs)
 
-def create_span_if_possible(client: Any, **kwargs: Any) -> None:
-    if DRY_RUN:
-        info(f"dry-run create_span name={kwargs.get('name')} id={kwargs.get('id')}")
-        return
-    client.rest_client.spans.create_span(**kwargs)
-
 _UPDATE_SPAN_UNSUPPORTED = frozenset({"start_time", "last_updated_at", "total_estimated_cost_version"})
 
 def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
@@ -1179,17 +1173,10 @@ def upsert_lifecycle_span(
     )
 
 
-def close_current_turn_span(
-    client: Any,
-    project_name: str,
-    session_key: str,
-    session: SessionState,
-    end_time: datetime,
-    reason: str,
-) -> None:
+def close_current_turn_span(session: SessionState) -> None:
     # State-only clear. The turn span itself is owned by emit_turn (same
     # deterministic id), so writing a lifecycle payload here would clobber
-    # its real input/output/metadata. Preserve signature for existing callers.
+    # its real input/output/metadata.
     session.current_turn_span_id = None
     session.current_turn_start_ts = None
 
@@ -2033,7 +2020,7 @@ def handle_llm_output(event: dict[str, Any], client: Any, project_name: str,
 
     emitted = flush_turns(client, project_name, session, session_key, transcript_path)
     if emitted > 0:
-        close_current_turn_span(client, project_name, session_key, session, _event_time(event), "llm_output")
+        close_current_turn_span(session)
     _save_bound_session_state(global_state, state_key, session)
     debug(f"llm_output: session={session_key} emitted={emitted}")
 
@@ -2158,7 +2145,7 @@ def handle_before_reset(event: dict[str, Any], client: Any, project_name: str,
     if transcript_path and transcript_path.exists():
         flush_turns(client, project_name, session, session_key, transcript_path, allow_partial=True)
     now = _event_time(event)
-    close_current_turn_span(client, project_name, session_key, session, now, "reset")
+    close_current_turn_span(session)
     finalize_pending_subagent_attempts(client, project_name, session_key, session, now)
     session.completed = True
     _save_bound_session_state(global_state, state_key, session)
@@ -2187,7 +2174,7 @@ def handle_agent_end(event: dict[str, Any], client: Any, project_name: str,
 
     # Mark for finalization — actual finalize_trace runs after commit_flush in main()
     now = _event_time(event)
-    close_current_turn_span(client, project_name, session_key, session, now, "agent_end")
+    close_current_turn_span(session)
     finalize_pending_subagent_attempts(client, project_name, session_key, session, now)
     session.ended_reason = session.ended_reason or "agent_end"
     session.completed = True
@@ -2221,7 +2208,7 @@ def handle_session_end(event: dict[str, Any], client: Any, project_name: str,
     if not session.completed and transcript_path and transcript_path.exists():
         flush_turns(client, project_name, session, session_key, transcript_path, allow_partial=True)
         now = _event_time(event)
-        close_current_turn_span(client, project_name, session_key, session, now, "session_end")
+        close_current_turn_span(session)
         finalize_pending_subagent_attempts(client, project_name, session_key, session, now)
         session.completed = True
     _save_bound_session_state(global_state, state_key, session)
