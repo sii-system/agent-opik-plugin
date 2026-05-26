@@ -35,9 +35,9 @@ in this directory — it copies both the TS plugin and the Python hook there, so
 the install is self-contained (no `OPENCODE_OPIK_HOOK_SCRIPT` needed).
 
 ```
-# from harness/opencode/
-./install.sh deps       # Python deps (opik, uuid6, socksio)
-./install.sh install    # copy opik-trace.ts + opencode_realtime_hook.py into place
+# from harness/opencode/ — one step: installs deps if missing, then copies
+# opik-trace.ts + opencode_realtime_hook.py into ~/.config/opencode/plugin/
+./install.sh install
 ```
 
 Then export your Opik credentials and project, and run `opencode`:

@@ -33,9 +33,9 @@ Usage:
   $(basename "$0") <command>
 
 Commands:
-  install     Copy plugin + hook into $PLUGIN_DIR
+  install     Install deps if missing, then copy plugin + hook into $PLUGIN_DIR
   uninstall   Remove plugin + hook from $PLUGIN_DIR
-  deps        Install the Python dependencies (requirements.txt)
+  deps        Force-(re)install the Python dependencies (requirements.txt)
   status      Show resolved paths, deps, and install state
   tail-log    Tail the hook log
   clear       Reset hook state + logs (timestamped backups)
@@ -50,6 +50,7 @@ EOF
 cmd_install() {
   [[ -f "$PLUGIN_SRC" ]] || { echo "plugin source not found: $PLUGIN_SRC" >&2; exit 1; }
   [[ -f "$HOOK_SRC" ]]   || { echo "hook source not found: $HOOK_SRC" >&2; exit 1; }
+  ensure_deps
   mkdir -p "$PLUGIN_DIR" "$STATE_DIR"
   install -m 0644 "$PLUGIN_SRC" "$PLUGIN_DST"
   install -m 0755 "$HOOK_SRC"   "$HOOK_DST"
@@ -66,9 +67,27 @@ cmd_uninstall() {
   (( removed == 0 )) && echo "(nothing to remove)" || true
 }
 
+# True when opik + uuid6 + socksio are all importable by PYTHON_BIN.
+deps_present() {
+  "$PYTHON_BIN" - <<'PY'
+import importlib.util, sys
+sys.exit(0 if all(importlib.util.find_spec(m) for m in ("opik", "uuid6", "socksio")) else 1)
+PY
+}
+
 cmd_deps() {
   [[ -f "$REQUIREMENTS" ]] || { echo "requirements.txt not found: $REQUIREMENTS" >&2; exit 1; }
   "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS"
+}
+
+# Install deps only if missing — called by `install` so it's a single step.
+ensure_deps() {
+  if deps_present; then
+    echo "deps: already present for $PYTHON_BIN (skipping pip)"
+  else
+    echo "deps: installing from requirements.txt..."
+    cmd_deps
+  fi
 }
 
 cmd_status() {

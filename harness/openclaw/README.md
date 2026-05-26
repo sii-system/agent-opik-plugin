@@ -35,7 +35,7 @@ and resolves the plugin path by its own location (no `/ABSOLUTE/PATH/TO/...`).
 
 ```
 # from harness/openclaw/
-./install.sh install    # pip deps + npm build + openclaw plugins install --link (+ enable)
+./install.sh install    # deps (if missing) + npm build + openclaw plugins install --link (+ enable)
 ./install.sh config     # prints the 'openclaw config set ...' commands to run
 ```
 

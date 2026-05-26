@@ -52,9 +52,27 @@ require_openclaw() {
   command -v openclaw >/dev/null 2>&1 || { echo "openclaw CLI not found on PATH" >&2; exit 1; }
 }
 
+# True when opik + uuid6 + socksio are all importable by PYTHON_BIN.
+deps_present() {
+  "$PYTHON_BIN" - <<'PY'
+import importlib.util, sys
+sys.exit(0 if all(importlib.util.find_spec(m) for m in ("opik", "uuid6", "socksio")) else 1)
+PY
+}
+
 cmd_deps() {
   [[ -f "$REQUIREMENTS" ]] || { echo "requirements.txt not found: $REQUIREMENTS" >&2; exit 1; }
   "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS"
+}
+
+# Install deps only if missing — called by `install` so it's a single step.
+ensure_deps() {
+  if deps_present; then
+    echo "deps: already present for $PYTHON_BIN (skipping pip)"
+  else
+    echo "deps: installing from requirements.txt..."
+    cmd_deps
+  fi
 }
 
 cmd_build() {
@@ -85,7 +103,7 @@ EOF
 }
 
 cmd_install() {
-  echo "==> deps"; cmd_deps
+  echo "==> deps"; ensure_deps
   echo "==> build"; cmd_build
   echo "==> register"; cmd_register
 }

@@ -28,9 +28,9 @@ Usage:
 
 Commands:
   hooks                 Print the resolved Claude Code hooks JSON to paste
-  install   [scope]     Merge the hooks into a settings.json (backup first)
+  install   [scope]     Install deps if missing, then merge hooks into settings.json
   uninstall [scope]     Remove this tracer's hooks from a settings.json
-  deps                  Install the Python dependencies (requirements.txt)
+  deps                  Force-(re)install the Python dependencies (requirements.txt)
   status    [scope]     Show resolved paths, deps, and whether hooks are installed
   tail-log              Tail the hook log
   clear                 Reset hook state + log (timestamped backups)
@@ -157,6 +157,7 @@ PY
 cmd_install() {
   local target; target="$(target_settings "${1:-}")"
   [[ -f "$HOOK_SCRIPT" ]] || { echo "hook not found: $HOOK_SCRIPT" >&2; exit 1; }
+  ensure_deps
   run_py install "$target"
   echo "Restart your Claude Code session to pick up the hooks."
 }
@@ -167,9 +168,27 @@ cmd_uninstall() {
   run_py uninstall "$target"
 }
 
+# True when opik + uuid6 + socksio are all importable by PYTHON_BIN.
+deps_present() {
+  "$PYTHON_BIN" - <<'PY'
+import importlib.util, sys
+sys.exit(0 if all(importlib.util.find_spec(m) for m in ("opik", "uuid6", "socksio")) else 1)
+PY
+}
+
 cmd_deps() {
   [[ -f "$REQUIREMENTS" ]] || { echo "requirements.txt not found: $REQUIREMENTS" >&2; exit 1; }
   "$PYTHON_BIN" -m pip install -r "$REQUIREMENTS"
+}
+
+# Install deps only if missing — called by `install` so it's a single step.
+ensure_deps() {
+  if deps_present; then
+    echo "deps: already present for $PYTHON_BIN (skipping pip)"
+  else
+    echo "deps: installing from requirements.txt..."
+    cmd_deps
+  fi
 }
 
 cmd_status() {

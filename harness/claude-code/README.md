@@ -9,17 +9,18 @@ Use `install.sh` in this directory. It resolves the hook script by its own
 location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to edit.
 
 ```
-# 1. Python deps so the hook can import opik
-./install.sh deps
-
-# 2. Merge the 8 hooks into a settings.json (timestamped backup first)
+# One step: installs Python deps if missing, then merges the 8 hooks
 ./install.sh install --user       # ~/.claude/settings.json (all projects)
 ./install.sh install --project    # ./.claude/settings.json (this checkout)
 ```
 
-The merge is non-destructive: existing hooks and other settings keys are kept,
-and re-running `install` won't duplicate entries. Restart your Claude Code
-session afterwards — new sessions pick up the hooks on launch.
+`--user` writes to `~/.claude/settings.json` and traces every Claude Code
+session; `--project` writes to `./.claude/settings.json` and traces only this
+checkout. `install` first checks whether `opik`/`uuid6`/`socksio` are
+importable and runs `pip` only if they're missing. The merge is
+non-destructive: existing hooks and other settings keys are kept, and
+re-running `install` won't duplicate entries. Restart your Claude Code session
+afterwards — new sessions pick up the hooks on launch.
 
 Other subcommands:
 
