@@ -30,14 +30,14 @@ pip install -r requirements.txt
 
 ## Install
 
-OpenCode auto-loads plugins from `~/.config/opencode/plugin/`. Use `install.sh`
+OpenCode auto-loads plugins from `~/.config/opencode/plugin/`. Use `install-opencode.sh`
 in this directory — it copies both the TS plugin and the Python hook there, so
 the install is self-contained (no `OPENCODE_OPIK_HOOK_SCRIPT` needed).
 
 ```
 # from harness/opencode/ — one step: installs deps if missing, then copies
 # opik-trace.ts + opencode_realtime_hook.py into ~/.config/opencode/plugin/
-./install.sh install
+./install-opencode.sh install
 ```
 
 Then export your Opik credentials and project, and run `opencode`:
@@ -57,14 +57,14 @@ Other subcommands:
 
 | Command | Purpose |
 |---------|---------|
-| `./install.sh status` | Show resolved paths, deps, and install state |
-| `./install.sh tail-log` | Tail `~/.opencode/state/opik_realtime.log` |
-| `./install.sh clear` | Reset hook state + logs (backs up first) |
+| `./install-opencode.sh status` | Show resolved paths, deps, and install state |
+| `./install-opencode.sh tail-log` | Tail `~/.opencode/state/opik_realtime.log` |
+| `./install-opencode.sh clear` | Reset hook state + logs (backs up first) |
 
 ## Uninstall
 
 ```
-./install.sh uninstall
+./install-opencode.sh uninstall
 ```
 
 ## Environment variables

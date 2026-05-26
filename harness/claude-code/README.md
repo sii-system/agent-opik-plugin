@@ -5,12 +5,12 @@ at `src/sii_opik_plugin/claude_code/claude_realtime_trace.py`.
 
 ## Install
 
-Use `install.sh` in this directory. It resolves the hook script by its own
+Use `install-claude.sh` in this directory. It resolves the hook script by its own
 location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to edit.
 
 ```
 # One step: installs Python deps if missing, then merges the 8 hooks
-./install.sh install
+./install-claude.sh install
 ```
 
 Hooks go into `~/.claude/settings.json`, so tracing applies to every Claude
@@ -24,10 +24,10 @@ Other subcommands:
 
 | Command | Purpose |
 |---------|---------|
-| `./install.sh hooks` | Print the resolved hooks JSON to paste by hand |
-| `./install.sh status` | Show resolved paths, deps, and install state |
-| `./install.sh tail-log` | Tail `~/.claude/state/opik_hook.log` |
-| `./install.sh clear` | Reset hook state + log (backs up first) |
+| `./install-claude.sh hooks` | Print the resolved hooks JSON to paste by hand |
+| `./install-claude.sh status` | Show resolved paths, deps, and install state |
+| `./install-claude.sh tail-log` | Tail `~/.claude/state/opik_hook.log` |
+| `./install-claude.sh clear` | Reset hook state + log (backs up first) |
 
 To pin a specific interpreter, set `CC_OPIK_PYTHON=/path/to/python` before
 running. `settings.example.json` is kept as a manual-merge reference.
@@ -35,7 +35,7 @@ running. `settings.example.json` is kept as a manual-merge reference.
 ## Uninstall
 
 ```
-./install.sh uninstall
+./install-claude.sh uninstall
 ```
 
 Removes only this tracer's entries from `~/.claude/settings.json` and prunes

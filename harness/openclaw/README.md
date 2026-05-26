@@ -30,13 +30,13 @@ src/sii_opik_plugin/openclaw/
 
 ## Install
 
-Use `install.sh` in this directory. It runs the deps + build + register steps
+Use `install-openclaw.sh` in this directory. It runs the deps + build + register steps
 and resolves the plugin path by its own location (no `/ABSOLUTE/PATH/TO/...`).
 
 ```
 # from harness/openclaw/
-./install.sh install    # deps (if missing) + npm build + openclaw plugins install --link (+ enable)
-./install.sh config     # prints the 'openclaw config set ...' commands to run
+./install-openclaw.sh install    # deps (if missing) + npm build + openclaw plugins install --link (+ enable)
+./install-openclaw.sh config     # prints the 'openclaw config set ...' commands to run
 ```
 
 `install` registers with `--link`, which is required for this layout: the
@@ -49,8 +49,8 @@ resolves that tracer automatically — don't move `dist/` away from here.
 run them, ending with `openclaw gateway restart`. Full config schema is in
 `openclaw.plugin.json`.
 
-Run the steps individually with `./install.sh deps | build | register`, and
-`./install.sh status` to check what's in place. Override the interpreter for
+Run the steps individually with `./install-openclaw.sh deps | build | register`, and
+`./install-openclaw.sh status` to check what's in place. Override the interpreter for
 deps with `OPENCLAW_OPIK_PYTHON=/path/to/python`.
 
 ## Verify
@@ -67,7 +67,7 @@ Run any OpenClaw session, then check:
 ## Uninstall
 
 ```
-./install.sh uninstall
+./install-openclaw.sh uninstall
 ```
 
 (Runs `openclaw plugins uninstall openclaw-opik-tracer` + `openclaw gateway restart`.)

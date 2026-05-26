@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Top-level installer for the sii-opik-plugin harness tracers.
 #
-# Thin dispatcher over harness/<name>/install.sh — it doesn't reimplement any
-# install logic, it just lets you act on one, several, or all harnesses at once
-# and surfaces per-harness post-install notes. Run bare for an interactive
-# picker, or pass a command + harness names for scripting.
+# Thin dispatcher over harness/<name>/install-<name>.sh — it doesn't reimplement
+# any install logic, only forwards a command to one or more per-harness installer
+# scripts and surfaces post-install notes. Run bare for an interactive picker,
+# or pass a command + harness names for scripting.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Known harnesses, in display order. Each has a harness/<name>/install.sh.
+# Known harnesses, in display order. Each has a harness/<name>/install-<name>.sh.
 HARNESS_NAMES=(claude-code opencode openclaw)
 
 SELECTED=()
@@ -25,7 +25,7 @@ Commands:
   uninstall    Remove selected harness tracers
   status       Show status for selected harnesses (all if none given)
   list         List harnesses, host-CLI presence, and install state
-  <other>      Forwarded to each selected harness's install.sh
+  <other>      Forwarded to each selected harness's install-<name>.sh
                (e.g. config, deps, clear, tail-log)
 
 Harnesses:  ${HARNESS_NAMES[*]}   (or 'all')
@@ -47,6 +47,15 @@ harness_cli() {
     claude-code) echo claude ;;
     opencode)    echo opencode ;;
     openclaw)    echo openclaw ;;
+  esac
+}
+
+# Per-harness installer script name (lives in harness/<name>/).
+harness_script() {
+  case "$1" in
+    claude-code) echo install-claude.sh ;;
+    opencode)    echo install-opencode.sh ;;
+    openclaw)    echo install-openclaw.sh ;;
   esac
 }
 
@@ -135,15 +144,16 @@ pick_harnesses() {
 # Run <command> against each named harness installer.
 forward() {
   local cmd="$1"; shift
-  local h dir
+  local h dir script
   for h in "$@"; do
     dir="$ROOT_DIR/harness/$h"
-    if [[ ! -f "$dir/install.sh" ]]; then
-      echo "==> $h: no installer at $dir/install.sh" >&2
+    script="$(harness_script "$h")"
+    if [[ ! -f "$dir/$script" ]]; then
+      echo "==> $h: no installer at $dir/$script" >&2
       continue
     fi
     echo "==> $h: $cmd"
-    if bash "$dir/install.sh" "$cmd"; then
+    if bash "$dir/$script" "$cmd"; then
       [[ "$cmd" == install ]] && post_install_hint "$h"
     else
       echo "  ($h: '$cmd' failed or unsupported)" >&2
