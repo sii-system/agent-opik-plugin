@@ -5,35 +5,42 @@ at `src/sii_opik_plugin/claude_code/claude_realtime_trace.py`.
 
 ## Install
 
-1. Pick a scope for the hooks:
-   - **User scope** (all projects): `~/.claude/settings.json`
-   - **Project scope** (this checkout only): `<project>/.claude/settings.json`
+Use `install.sh` in this directory. It resolves the hook script by its own
+location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to edit.
 
-2. Open `settings.example.json` in this directory. Copy its `"hooks"` block
-   into your chosen `settings.json`. If `settings.json` already has a `"hooks"`
-   key, merge the event arrays — Claude Code runs every entry registered for an
-   event, so additions don't conflict with existing hooks.
+```
+# 1. Python deps so the hook can import opik
+./install.sh deps
 
-3. Replace every occurrence of `/ABSOLUTE/PATH/TO/sii-opik-plugin` with the
-   absolute path to your clone of this repo. Example:
+# 2. Merge the 8 hooks into a settings.json (timestamped backup first)
+./install.sh install --user       # ~/.claude/settings.json (all projects)
+./install.sh install --project    # ./.claude/settings.json (this checkout)
+```
 
-   ```
-   /ABSOLUTE/PATH/TO/sii-opik-plugin
-   →
-   /Users/you/code/sii-opik-plugin
-   ```
+The merge is non-destructive: existing hooks and other settings keys are kept,
+and re-running `install` won't duplicate entries. Restart your Claude Code
+session afterwards — new sessions pick up the hooks on launch.
 
-4. Install Python deps so the hook can import `opik`:
+Other subcommands:
 
-   ```
-   pip install -r requirements.txt
-   ```
+| Command | Purpose |
+|---------|---------|
+| `./install.sh hooks` | Print the resolved hooks JSON to paste by hand |
+| `./install.sh status [scope]` | Show resolved paths, deps, and install state |
+| `./install.sh tail-log` | Tail `~/.claude/state/opik_hook.log` |
+| `./install.sh clear` | Reset hook state + log (backs up first) |
 
-5. Restart your Claude Code session. New sessions pick up the hooks on launch.
+To pin a specific interpreter, set `CC_OPIK_PYTHON=/path/to/python` before
+running. `settings.example.json` is kept as a manual-merge reference.
 
 ## Uninstall
 
-Delete the 8 event entries from your `settings.json`.
+```
+./install.sh uninstall --user      # or --project
+```
+
+Removes only this tracer's entries and prunes emptied event arrays, leaving
+your other hooks intact.
 
 ## Notes
 

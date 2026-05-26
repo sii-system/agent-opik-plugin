@@ -30,43 +30,41 @@ pip install -r requirements.txt
 
 ## Install
 
-OpenCode loads plugins from `~/.config/opencode/plugin/*.ts`, so the plugin file
-must live there. The Python hook can stay in this repo and be referenced by
-absolute path via `OPENCODE_OPIK_HOOK_SCRIPT` — that env var controls what
-`opik-trace.ts` spawns at runtime.
+OpenCode auto-loads plugins from `~/.config/opencode/plugin/`. Use `install.sh`
+in this directory — it copies both the TS plugin and the Python hook there, so
+the install is self-contained (no `OPENCODE_OPIK_HOOK_SCRIPT` needed).
 
-1. Copy the plugin into OpenCode's plugin directory:
+```
+# from harness/opencode/
+./install.sh deps       # Python deps (opik, uuid6, socksio)
+./install.sh install    # copy opik-trace.ts + opencode_realtime_hook.py into place
+```
 
-   ```
-   mkdir -p ~/.config/opencode/plugin
-   cp harness/opencode/opik-trace.ts ~/.config/opencode/plugin/
-   ```
+Then export your Opik credentials and project, and run `opencode`:
 
-2. Point the plugin at the in-repo Python hook (otherwise it defaults to
-   `~/.config/opencode/plugin/opencode_realtime_hook.py`):
+```
+export OPIK_URL_OVERRIDE="http://localhost:5173/api/"
+export OPIK_PROJECT_NAME="opencode-realtime"
+opencode    # traces appear in Opik as the session progresses
+```
 
-   ```
-   export OPENCODE_OPIK_HOOK_SCRIPT=/ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/opencode/opencode_realtime_hook.py
-   ```
+To vendor a different hook source instead of the in-repo one, set
+`OPENCODE_OPIK_HOOK_SCRIPT=/path/to/hook.py` before `install`; to pin an
+interpreter, set `OPENCODE_OPIK_PYTHON=/path/to/python`. Disable tracing for a
+single run with `TRACE_TO_OPIK=false opencode ...`.
 
-   To use a specific interpreter (e.g. a venv), also set
-   `OPENCODE_OPIK_PYTHON=/path/to/python`.
+Other subcommands:
 
-3. Export your Opik credentials and project:
-
-   ```
-   export OPIK_URL_OVERRIDE="http://localhost:5173/api/"
-   export OPIK_PROJECT_NAME="opencode-realtime"
-   ```
-
-4. Run `opencode` as usual — traces appear in Opik as the session progresses.
-
-To disable tracing for a single run: `TRACE_TO_OPIK=false opencode ...`.
+| Command | Purpose |
+|---------|---------|
+| `./install.sh status` | Show resolved paths, deps, and install state |
+| `./install.sh tail-log` | Tail `~/.opencode/state/opik_realtime.log` |
+| `./install.sh clear` | Reset hook state + logs (backs up first) |
 
 ## Uninstall
 
 ```
-rm ~/.config/opencode/plugin/opik-trace.ts
+./install.sh uninstall
 ```
 
 ## Environment variables
