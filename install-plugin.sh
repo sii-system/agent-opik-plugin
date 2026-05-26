@@ -90,11 +90,11 @@ is_known() {
 }
 
 post_install_hint() {
-  case "$1" in
-    claude-code) echo "  hint: restart Claude Code so new sessions load the hooks" ;;
-    opencode)    echo "  hint: export OPIK_URL_OVERRIDE + OPIK_PROJECT_NAME before running opencode" ;;
-    openclaw)    echo "  hint: run '$(basename "$0") config openclaw' to set your Opik API key" ;;
-  esac
+  # Per-harness installers already print their own post-install action line
+  # (Claude Code's restart prompt, OpenCode's OPIK_* export prompt, OpenClaw's
+  # "Next: ... config" prompt), so the dispatcher stays silent here to avoid
+  # duplicating it when fanning out.
+  :
 }
 
 cmd_list() {
