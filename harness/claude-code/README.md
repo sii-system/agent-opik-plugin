@@ -10,13 +10,11 @@ location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to edit.
 
 ```
 # One step: installs Python deps if missing, then merges the 8 hooks
-./install.sh install --user       # ~/.claude/settings.json (all projects)
-./install.sh install --project    # ./.claude/settings.json (this checkout)
+./install.sh install
 ```
 
-`--user` writes to `~/.claude/settings.json` and traces every Claude Code
-session; `--project` writes to `./.claude/settings.json` and traces only this
-checkout. `install` first checks whether `opik`/`uuid6`/`socksio` are
+Hooks go into `~/.claude/settings.json`, so tracing applies to every Claude
+Code session. `install` first checks whether `opik`/`uuid6`/`socksio` are
 importable and runs `pip` only if they're missing. The merge is
 non-destructive: existing hooks and other settings keys are kept, and
 re-running `install` won't duplicate entries. Restart your Claude Code session
@@ -27,7 +25,7 @@ Other subcommands:
 | Command | Purpose |
 |---------|---------|
 | `./install.sh hooks` | Print the resolved hooks JSON to paste by hand |
-| `./install.sh status [scope]` | Show resolved paths, deps, and install state |
+| `./install.sh status` | Show resolved paths, deps, and install state |
 | `./install.sh tail-log` | Tail `~/.claude/state/opik_hook.log` |
 | `./install.sh clear` | Reset hook state + log (backs up first) |
 
@@ -37,11 +35,11 @@ running. `settings.example.json` is kept as a manual-merge reference.
 ## Uninstall
 
 ```
-./install.sh uninstall --user      # or --project
+./install.sh uninstall
 ```
 
-Removes only this tracer's entries and prunes emptied event arrays, leaving
-your other hooks intact.
+Removes only this tracer's entries from `~/.claude/settings.json` and prunes
+emptied event arrays, leaving your other hooks intact.
 
 ## Notes
 

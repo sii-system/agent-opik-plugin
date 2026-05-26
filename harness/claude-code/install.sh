@@ -3,8 +3,8 @@
 #
 # Resolves the in-repo hook script by its own location, so there is no
 # /ABSOLUTE/PATH/TO/... placeholder to hand-edit. Can either print the
-# resolved hooks JSON for you to paste, or merge it directly into a
-# Claude Code settings.json (user or project scope) with a backup.
+# resolved hooks JSON for you to paste, or merge it directly into the user
+# Claude Code settings.json (~/.claude/settings.json) with a backup.
 
 set -euo pipefail
 
@@ -14,8 +14,7 @@ HOOK_SCRIPT="${CC_OPIK_HOOK_SCRIPT:-$REPO_ROOT/src/sii_opik_plugin/claude_code/c
 PYTHON_BIN="${CC_OPIK_PYTHON:-python3}"
 REQUIREMENTS="$REPO_ROOT/requirements.txt"
 
-USER_SETTINGS="$HOME/.claude/settings.json"
-PROJECT_SETTINGS="$PWD/.claude/settings.json"
+SETTINGS="$HOME/.claude/settings.json"
 
 STATE_DIR="$HOME/.claude/state"
 LOG_FILE="$STATE_DIR/opik_hook.log"
@@ -24,35 +23,22 @@ STATE_FILE="$STATE_DIR/opik_hook_state.json"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") <command> [--user | --project]
+  $(basename "$0") <command>
 
 Commands:
-  hooks                 Print the resolved Claude Code hooks JSON to paste
-  install   [scope]     Install deps if missing, then merge hooks into settings.json
-  uninstall [scope]     Remove this tracer's hooks from a settings.json
-  deps                  Force-(re)install the Python dependencies (requirements.txt)
-  status    [scope]     Show resolved paths, deps, and whether hooks are installed
-  tail-log              Tail the hook log
-  clear                 Reset hook state + log (timestamped backups)
-
-Scope (for install/uninstall/status), default --user:
-  --user                $USER_SETTINGS
-  --project             $PROJECT_SETTINGS
+  hooks       Print the resolved Claude Code hooks JSON to paste
+  install     Install deps if missing, then merge hooks into $SETTINGS
+  uninstall   Remove this tracer's hooks from $SETTINGS
+  deps        Force-(re)install the Python dependencies (requirements.txt)
+  status      Show resolved paths, deps, and whether hooks are installed
+  tail-log    Tail the hook log
+  clear       Reset hook state + log (timestamped backups)
 
 Examples:
-  $(basename "$0") install --user
+  $(basename "$0") install
   $(basename "$0") hooks
-  $(basename "$0") status --project
+  $(basename "$0") status
 EOF
-}
-
-# Resolve the target settings.json from a scope flag.
-target_settings() {
-  case "${1:-}" in
-    --project) printf '%s' "$PROJECT_SETTINGS" ;;
-    --user|"") printf '%s' "$USER_SETTINGS" ;;
-    *) echo "unknown scope: $1 (use --user or --project)" >&2; exit 1 ;;
-  esac
 }
 
 # Shared Python helper. Builds the canonical hooks object from HOOK_SCRIPT +
@@ -155,17 +141,15 @@ PY
 }
 
 cmd_install() {
-  local target; target="$(target_settings "${1:-}")"
   [[ -f "$HOOK_SCRIPT" ]] || { echo "hook not found: $HOOK_SCRIPT" >&2; exit 1; }
   ensure_deps
-  run_py install "$target"
+  run_py install "$SETTINGS"
   echo "Restart your Claude Code session to pick up the hooks."
 }
 
 cmd_uninstall() {
-  local target; target="$(target_settings "${1:-}")"
-  [[ -f "$target" ]] || { echo "(no settings file at $target)"; return; }
-  run_py uninstall "$target"
+  [[ -f "$SETTINGS" ]] || { echo "(no settings file at $SETTINGS)"; return; }
+  run_py uninstall "$SETTINGS"
 }
 
 # True when opik + uuid6 + socksio are all importable by PYTHON_BIN.
@@ -192,7 +176,6 @@ ensure_deps() {
 }
 
 cmd_status() {
-  local target; target="$(target_settings "${1:-}")"
   echo "repo_root:   $REPO_ROOT"
   echo "hook_script: $HOOK_SCRIPT"
   [[ -f "$HOOK_SCRIPT" ]] && echo "  hook_exists=true" || echo "  hook_exists=false"
@@ -205,9 +188,9 @@ for name in ("opik", "uuid6", "socksio"):
     print(f"  {name}_installed={importlib.util.find_spec(name) is not None}")
 PY
   echo
-  echo "settings ($target):"
-  if [[ -f "$target" ]]; then
-    echo "  exists=true hooks=$(run_py check "$target")"
+  echo "settings ($SETTINGS):"
+  if [[ -f "$SETTINGS" ]]; then
+    echo "  exists=true hooks=$(run_py check "$SETTINGS")"
   else
     echo "  exists=false"
   fi
@@ -239,10 +222,10 @@ cmd_clear() {
 main() {
   case "${1:-}" in
     hooks)     run_py print ;;
-    install)   shift; cmd_install "${1:-}" ;;
-    uninstall) shift; cmd_uninstall "${1:-}" ;;
+    install)   cmd_install ;;
+    uninstall) cmd_uninstall ;;
     deps)      cmd_deps ;;
-    status)    shift; cmd_status "${1:-}" ;;
+    status)    cmd_status ;;
     tail-log)  cmd_tail_log ;;
     clear)     cmd_clear ;;
     -h|--help|help|"") usage ;;
