@@ -25,7 +25,7 @@ import { dirname, resolve } from "node:path"
 
 const HOOK =
   process.env.OPENCODE_OPIK_HOOK_SCRIPT ??
-  resolve(homedir(), ".config/opencode/plugin/opencode_realtime_hook.py")
+  resolve(homedir(), ".config/opencode/plugins/opencode_realtime_hook.py")
 
 const PYTHON = process.env.OPENCODE_OPIK_PYTHON ?? "python3"
 const PLUGIN_LOG = resolve(homedir(), ".opencode/state/opik_plugin.log")

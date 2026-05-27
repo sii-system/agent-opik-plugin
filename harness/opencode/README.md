@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ## Install
 
-OpenCode loads plugins from `~/.config/opencode/plugin/*.ts`, so the plugin file
+OpenCode loads plugins from `~/.config/opencode/plugins/*.ts`, so the plugin file
 must live there. The Python hook can stay in this repo and be referenced by
 absolute path via `OPENCODE_OPIK_HOOK_SCRIPT` — that env var controls what
 `opik-trace.ts` spawns at runtime.
@@ -38,12 +38,12 @@ absolute path via `OPENCODE_OPIK_HOOK_SCRIPT` — that env var controls what
 1. Copy the plugin into OpenCode's plugin directory:
 
    ```
-   mkdir -p ~/.config/opencode/plugin
-   cp harness/opencode/opik-trace.ts ~/.config/opencode/plugin/
+   mkdir -p ~/.config/opencode/plugins
+   cp harness/opencode/opik-trace.ts ~/.config/opencode/plugins/
    ```
 
 2. Point the plugin at the in-repo Python hook (otherwise it defaults to
-   `~/.config/opencode/plugin/opencode_realtime_hook.py`):
+   `~/.config/opencode/plugins/opencode_realtime_hook.py`):
 
    ```
    export OPENCODE_OPIK_HOOK_SCRIPT=/ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/opencode/opencode_realtime_hook.py
@@ -66,7 +66,7 @@ To disable tracing for a single run: `TRACE_TO_OPIK=false opencode ...`.
 ## Uninstall
 
 ```
-rm ~/.config/opencode/plugin/opik-trace.ts
+rm ~/.config/opencode/plugins/opik-trace.ts
 ```
 
 ## Environment variables
@@ -75,7 +75,7 @@ rm ~/.config/opencode/plugin/opik-trace.ts
 |----------|---------|-------------|
 | `OPIK_PROJECT_NAME` | — | Target Opik project name |
 | `OPIK_TRACE_NAME` | auto `opencode_trace_…` | Literal `trace.name` |
-| `OPENCODE_OPIK_HOOK_SCRIPT` | `~/.config/opencode/plugin/opencode_realtime_hook.py` | Path to the Python hook spawned by the plugin |
+| `OPENCODE_OPIK_HOOK_SCRIPT` | `~/.config/opencode/plugins/opencode_realtime_hook.py` | Path to the Python hook spawned by the plugin |
 | `OPENCODE_OPIK_PYTHON` | `python3` | Interpreter used to run the hook |
 | `OPENCODE_DB_PATH` | auto-discovered | Override path to `opencode.db` |
 | `TRACE_TO_OPIK` | `true` | Enable/disable tracing for a run |
