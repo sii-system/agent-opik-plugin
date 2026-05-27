@@ -1,6 +1,6 @@
 // OpenCode plugin: spawn the realtime trace hook on lifecycle events.
 //
-// Each event spawns a detached `python3 opencode_realtime_hook.py <event>` with
+// Each event spawns a detached `python3 opencode_realtime_trace.py <event>` with
 // a one-shot JSON payload on stdin. stdout/stderr go to /dev/null and the child
 // is unref'd, so OpenCode never blocks on or sees output from the hook.
 // Failures are swallowed (fail-open) per design.
@@ -25,7 +25,7 @@ import { dirname, resolve } from "node:path"
 
 const HOOK =
   process.env.OPENCODE_OPIK_HOOK_SCRIPT ??
-  resolve(homedir(), ".config/opencode/plugins/opencode_realtime_hook.py")
+  resolve(homedir(), ".config/opencode/plugins/opencode_realtime_trace.py")
 
 const PYTHON = process.env.OPENCODE_OPIK_PYTHON ?? "python3"
 const PLUGIN_LOG = resolve(homedir(), ".opencode/state/opik_plugin.log")

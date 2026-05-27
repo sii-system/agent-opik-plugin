@@ -14,7 +14,7 @@ harness/opencode/
 └── README.md                 You are here
 
 src/sii_opik_plugin/opencode/
-└── opencode_realtime_hook.py the tracer — reads opencode.db, emits Opik spans
+└── opencode_realtime_trace.py the tracer — reads opencode.db, emits Opik spans
 ```
 
 ## Prerequisites
@@ -43,10 +43,10 @@ absolute path via `OPENCODE_OPIK_HOOK_SCRIPT` — that env var controls what
    ```
 
 2. Point the plugin at the in-repo Python hook (otherwise it defaults to
-   `~/.config/opencode/plugins/opencode_realtime_hook.py`):
+   `~/.config/opencode/plugins/opencode_realtime_trace.py`):
 
    ```
-   export OPENCODE_OPIK_HOOK_SCRIPT=/ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/opencode/opencode_realtime_hook.py
+   export OPENCODE_OPIK_HOOK_SCRIPT=/ABSOLUTE/PATH/TO/sii-opik-plugin/src/sii_opik_plugin/opencode/opencode_realtime_trace.py
    ```
 
    To use a specific interpreter (e.g. a venv), also set
@@ -75,7 +75,7 @@ rm ~/.config/opencode/plugins/opik-trace.ts
 |----------|---------|-------------|
 | `OPIK_PROJECT_NAME` | — | Target Opik project name |
 | `OPIK_TRACE_NAME` | auto `opencode_trace_…` | Literal `trace.name` |
-| `OPENCODE_OPIK_HOOK_SCRIPT` | `~/.config/opencode/plugins/opencode_realtime_hook.py` | Path to the Python hook spawned by the plugin |
+| `OPENCODE_OPIK_HOOK_SCRIPT` | `~/.config/opencode/plugins/opencode_realtime_trace.py` | Path to the Python hook spawned by the plugin |
 | `OPENCODE_OPIK_PYTHON` | `python3` | Interpreter used to run the hook |
 | `OPENCODE_DB_PATH` | auto-discovered | Override path to `opencode.db` |
 | `TRACE_TO_OPIK` | `true` | Enable/disable tracing for a run |
@@ -115,5 +115,5 @@ pytest tests/
 ```
 
 `tests/conftest.py` puts `src/` on `sys.path` so tests can
-`from sii_opik_plugin.opencode import opencode_realtime_hook` without the
+`from sii_opik_plugin.opencode import opencode_realtime_trace` without the
 package being pip-installed.
