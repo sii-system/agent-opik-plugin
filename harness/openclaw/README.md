@@ -30,49 +30,28 @@ src/sii_opik_plugin/openclaw/
 
 ## Install
 
-From this directory (`harness/openclaw/`):
+Use `install-openclaw.sh` in this directory. It runs the deps + build + register steps
+and resolves the plugin path by its own location (no `/ABSOLUTE/PATH/TO/...`).
 
-1. Build the TS plugin:
-   ```
-   npm install
-   npm run build
-   ```
-   This produces `dist/index.js` and `dist/src/bridge.js`. The bridge
-   resolves the Python tracer at
-   `<repo>/src/sii_opik_plugin/openclaw/openclaw_opik_tracer.py`
-   automatically — do not move `dist/` away from this directory.
+```
+# from harness/openclaw/
+./install-openclaw.sh install    # deps (if missing) + npm build + openclaw plugins install --link (+ enable)
+./install-openclaw.sh config     # prints the 'openclaw config set ...' commands to run
+```
 
-2. Install the Python tracer's deps. From the repo root:
-   ```
-   pip install -r requirements.txt
-   ```
-   If you use a venv, note its `python` path — you'll point the plugin
-   at it via `pythonPath` below.
+`install` registers with `--link`, which is required for this layout: the
+plugin directory holds the TS bridge while the Python tracer lives at the repo
+root under `src/sii_opik_plugin/openclaw/`. The built `dist/src/bridge.js`
+resolves that tracer automatically — don't move `dist/` away from here.
 
-3. Register the plugin with OpenClaw from the repo checkout:
-   ```
-   openclaw plugins install --link /ABSOLUTE/PATH/TO/sii-opik-plugin/harness/openclaw
-   ```
-   `--link` is required for this layout. The plugin directory contains the
-   TS bridge, while the Python tracer lives at the repo root under
-   `src/sii_opik_plugin/openclaw/`. A copied install of only
-   `harness/openclaw/` will not include that tracer, so hooks will fail to
-   spawn the Python script.
+`config` prints the credential commands prefilled with this repo's
+`.venv/bin/python` (if present) as `pythonPath`; paste your Opik key in and
+run them, ending with `openclaw gateway restart`. Full config schema is in
+`openclaw.plugin.json`.
 
-4. Configure it. The minimum is your Opik credentials:
-   ```
-   openclaw config set plugins.entries.openclaw-opik-tracer.enabled true
-   openclaw config set plugins.entries.openclaw-opik-tracer.config.opikApiKey   "<YOUR_KEY>"
-   openclaw config set plugins.entries.openclaw-opik-tracer.config.opikWorkspace "default"
-   openclaw config set plugins.entries.openclaw-opik-tracer.config.opikProjectName "openclaw"
-   openclaw config set plugins.entries.openclaw-opik-tracer.config.pythonPath  "/path/to/python"
-   ```
-   Full config schema is in `openclaw.plugin.json`.
-
-5. Restart OpenClaw:
-   ```
-   openclaw gateway restart
-   ```
+Run the steps individually with `./install-openclaw.sh deps | build | register`, and
+`./install-openclaw.sh status` to check what's in place. Override the interpreter for
+deps with `OPENCLAW_OPIK_PYTHON=/path/to/python`.
 
 ## Verify
 
@@ -88,9 +67,10 @@ Run any OpenClaw session, then check:
 ## Uninstall
 
 ```
-openclaw plugins uninstall openclaw-opik-tracer
-openclaw gateway restart
+./install-openclaw.sh uninstall
 ```
+
+(Runs `openclaw plugins uninstall openclaw-opik-tracer` + `openclaw gateway restart`.)
 
 ## How it works
 
