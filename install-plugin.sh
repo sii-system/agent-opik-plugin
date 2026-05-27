@@ -75,7 +75,7 @@ harness_state() {
         echo absent
       fi ;;
     opencode)
-      [[ -f "$HOME/.config/opencode/plugin/opik-trace.ts" ]] && echo installed || echo absent ;;
+      [[ -f "$HOME/.config/opencode/plugins/opik-trace.ts" ]] && echo installed || echo absent ;;
     openclaw)
       [[ -f "$ROOT_DIR/harness/openclaw/dist/index.js" ]] && echo built || echo not-built ;;
   esac

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Manual installer for the OpenCode → Opik realtime tracer.
 #
-# OpenCode auto-loads plugins from ~/.config/opencode/plugin/. This copies the
+# OpenCode auto-loads plugins from ~/.config/opencode/plugins/. This copies the
 # TS plugin and the Python hook into that directory so the install is
 # self-contained (no OPENCODE_OPIK_HOOK_SCRIPT needed). Set that env var before
 # `install` to vendor a different hook source instead.
@@ -16,11 +16,11 @@ PYTHON_BIN="${OPENCODE_OPIK_PYTHON:-python3}"
 PLUGIN_SRC="$ROOT_DIR/opik-trace.ts"
 # Match the env var the plugin reads at runtime (opik-trace.ts). Setting it
 # changes both what `install` copies and what OpenCode executes.
-HOOK_SRC="${OPENCODE_OPIK_HOOK_SCRIPT:-$REPO_ROOT/src/sii_opik_plugin/opencode/opencode_realtime_hook.py}"
+HOOK_SRC="${OPENCODE_OPIK_HOOK_SCRIPT:-$REPO_ROOT/src/sii_opik_plugin/opencode/opencode_realtime_trace.py}"
 
-PLUGIN_DIR="$HOME/.config/opencode/plugin"
+PLUGIN_DIR="$HOME/.config/opencode/plugins"
 PLUGIN_DST="$PLUGIN_DIR/opik-trace.ts"
-HOOK_DST="$PLUGIN_DIR/opencode_realtime_hook.py"
+HOOK_DST="$PLUGIN_DIR/opencode_realtime_trace.py"
 
 STATE_DIR="$HOME/.opencode/state"
 LOG_FILE="$STATE_DIR/opik_realtime.log"
