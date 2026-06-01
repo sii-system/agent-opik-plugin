@@ -30,11 +30,12 @@ src/sii_opik_plugin/openclaw/
 
 ## Install
 
-Use `install-openclaw.sh` in this directory. It runs the deps + build + register steps
-and resolves the plugin path by its own location (no `/ABSOLUTE/PATH/TO/...`).
+Use `install-openclaw.sh` from `installers/openclaw/`. It runs the deps + build +
+register steps and resolves the plugin path under `harness/openclaw/` (no
+`/ABSOLUTE/PATH/TO/...`).
 
 ```
-# from harness/openclaw/
+# from installers/openclaw/
 ./install-openclaw.sh install    # deps (if missing) + npm build + openclaw plugins install --link (+ enable)
 ./install-openclaw.sh config     # prints the 'openclaw config set ...' commands to run
 ```

@@ -2,7 +2,7 @@
 
 Realtime tracing of agent-harness sessions to [Opik](https://github.com/comet-ml/opik).
 One Python tracer per harness lives under `src/sii_opik_plugin/<harness>/`, with
-a thin install helper at `harness/<harness>/install-<harness>.sh`.
+a thin install helper at `installers/<harness>/install-<harness>.sh`.
 
 Supported harnesses: **claude-code**, **opencode**, **openclaw**.
 
@@ -34,6 +34,6 @@ then runs each harness's setup. After install:
 - **openclaw** — run `./install-plugin.sh config openclaw` and paste in your Opik API key.
 
 Each harness can also be driven directly via its own
-`harness/<name>/install-<name>.sh` (e.g. `install-claude.sh`,
+`installers/<name>/install-<name>.sh` (e.g. `install-claude.sh`,
 `install-opencode.sh`, `install-openclaw.sh`); see each harness directory's
 `README.md` for harness-specific details.
