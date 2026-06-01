@@ -42,6 +42,30 @@ except Exception:
     id_helpers = None
 
 try:
+    from sii_opik_plugin.span_batching import (
+        flush_span_batch,
+        queue_span_snapshot,
+        span_batch_env_names,
+        update_queued_span,
+    )
+except Exception:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    try:
+        from sii_opik_plugin.span_batching import (
+            flush_span_batch,
+            queue_span_snapshot,
+            span_batch_env_names,
+            update_queued_span,
+        )
+    except Exception:
+        from span_batching import (  # type: ignore
+            flush_span_batch,
+            queue_span_snapshot,
+            span_batch_env_names,
+            update_queued_span,
+        )
+
+try:
     from uuid6 import uuid7 as _uuid7
 except Exception:
     _uuid7 = None
@@ -58,6 +82,7 @@ DRY_RUN = os.environ.get("OC_OPIK_DRY_RUN", "").lower() == "true"
 MAX_TEXT_CHARS = int(os.environ.get("OC_OPIK_MAX_TEXT_CHARS", "20000"))
 DEFAULT_PROJECT = os.environ.get("OPIK_PROJECT_NAME", "openclaw")
 FLUSH_INTERVAL_S = 5
+SPAN_BATCH_ENV_NAMES = span_batch_env_names()
 PROCESS_TIMEOUT_S = int(os.environ.get("OC_OPIK_PROCESS_TIMEOUT_S", "15"))
 PINCHBENCH_TASK_ID = (os.environ.get("PINCHBENCH_TASK_ID") or "").strip()
 PINCHBENCH_RUN_ID = (os.environ.get("PINCHBENCH_RUN_ID") or "").strip()
@@ -1099,11 +1124,15 @@ def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run update_span id={span_id}")
         return
     filtered = {k: v for k, v in kwargs.items() if k not in _UPDATE_SPAN_UNSUPPORTED}
+    if update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
+        return
     client.rest_client.spans.update_span(span_id, **filtered)
 
 def create_or_update_span(client: Any, span_id: str, **kwargs: Any) -> None:
     if DRY_RUN:
         info(f"dry-run upsert_span name={kwargs.get('name')} id={span_id}")
+        return
+    if queue_span_snapshot(span_id, kwargs, SPAN_BATCH_ENV_NAMES):
         return
     try:
         client.rest_client.spans.create_span(id=span_id, **kwargs)
@@ -1789,6 +1818,7 @@ def rollback_flush(session: SessionState) -> None:
 
 def _flush_client(client: Any) -> bool:
     try:
+        flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
         if hasattr(client, "flush"):
             client.flush()
         elif hasattr(client, "end"):

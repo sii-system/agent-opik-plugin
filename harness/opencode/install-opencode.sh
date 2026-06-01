@@ -17,10 +17,12 @@ PLUGIN_SRC="$ROOT_DIR/opik-trace.ts"
 # Match the env var the plugin reads at runtime (opik-trace.ts). Setting it
 # changes both what `install` copies and what OpenCode executes.
 HOOK_SRC="${OPENCODE_OPIK_HOOK_SCRIPT:-$REPO_ROOT/src/sii_opik_plugin/opencode/opencode_realtime_trace.py}"
+SPAN_BATCH_HELPER_SRC="$REPO_ROOT/src/sii_opik_plugin/span_batching.py"
 
 PLUGIN_DIR="$HOME/.config/opencode/plugins"
 PLUGIN_DST="$PLUGIN_DIR/opik-trace.ts"
 HOOK_DST="$PLUGIN_DIR/opencode_realtime_trace.py"
+SPAN_BATCH_HELPER_DST="$PLUGIN_DIR/span_batching.py"
 
 STATE_DIR="$HOME/.opencode/state"
 LOG_FILE="$STATE_DIR/opik_realtime.log"
@@ -50,18 +52,21 @@ EOF
 cmd_install() {
   [[ -f "$PLUGIN_SRC" ]] || { echo "plugin source not found: $PLUGIN_SRC" >&2; exit 1; }
   [[ -f "$HOOK_SRC" ]]   || { echo "hook source not found: $HOOK_SRC" >&2; exit 1; }
+  [[ -f "$SPAN_BATCH_HELPER_SRC" ]] || { echo "span batching helper not found: $SPAN_BATCH_HELPER_SRC" >&2; exit 1; }
   ensure_deps
   mkdir -p "$PLUGIN_DIR" "$STATE_DIR"
   install -m 0644 "$PLUGIN_SRC" "$PLUGIN_DST"
   install -m 0755 "$HOOK_SRC"   "$HOOK_DST"
+  install -m 0644 "$SPAN_BATCH_HELPER_SRC" "$SPAN_BATCH_HELPER_DST"
   echo "installed: $PLUGIN_DST"
   echo "installed: $HOOK_DST"
+  echo "installed: $SPAN_BATCH_HELPER_DST"
   echo "Export your OPIK_* credentials and OPIK_PROJECT_NAME, then run opencode."
 }
 
 cmd_uninstall() {
   local removed=0
-  for path in "$PLUGIN_DST" "$HOOK_DST"; do
+  for path in "$PLUGIN_DST" "$HOOK_DST" "$SPAN_BATCH_HELPER_DST"; do
     if [[ -f "$path" ]]; then rm -f "$path"; echo "removed: $path"; removed=1; fi
   done
   (( removed == 0 )) && echo "(nothing to remove)" || true
@@ -94,8 +99,10 @@ cmd_status() {
   echo "repo_root:  $REPO_ROOT"
   echo "plugin_src: $PLUGIN_SRC"
   echo "hook_src:   $HOOK_SRC"
+  echo "helper_src: $SPAN_BATCH_HELPER_SRC"
   echo "plugin_dst: $PLUGIN_DST"
   echo "hook_dst:   $HOOK_DST"
+  echo "helper_dst: $SPAN_BATCH_HELPER_DST"
   echo "python:     $PYTHON_BIN ($($PYTHON_BIN --version 2>&1))"
   echo
   echo "deps:"
@@ -109,6 +116,7 @@ PY
   for label_path in \
     "plugin_installed:$PLUGIN_DST" \
     "hook_installed:$HOOK_DST" \
+    "helper_installed:$SPAN_BATCH_HELPER_DST" \
     "log_exists:$LOG_FILE" \
     "plugin_log_exists:$PLUGIN_LOG" \
     "state_exists:$STATE_FILE"; do

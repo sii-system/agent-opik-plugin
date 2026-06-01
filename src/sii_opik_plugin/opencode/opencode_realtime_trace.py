@@ -43,6 +43,30 @@ except Exception:
     id_helpers = None
 
 try:
+    from sii_opik_plugin.span_batching import (
+        flush_span_batch,
+        queue_span_snapshot,
+        span_batch_env_names,
+        update_queued_span,
+    )
+except Exception:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    try:
+        from sii_opik_plugin.span_batching import (
+            flush_span_batch,
+            queue_span_snapshot,
+            span_batch_env_names,
+            update_queued_span,
+        )
+    except Exception:
+        from span_batching import (  # type: ignore
+            flush_span_batch,
+            queue_span_snapshot,
+            span_batch_env_names,
+            update_queued_span,
+        )
+
+try:
     from uuid6 import uuid7 as _uuid7
 except Exception:
     _uuid7 = None
@@ -72,6 +96,7 @@ HOOK_DEADLINE_S = float(os.environ.get("OC_OPIK_HOOK_DEADLINE_S", "60"))
 # daemon thread that we join with this timeout; if it doesn't return in time we
 # log `flush=timeout` and exit (the leaked daemon dies with the process).
 OPIK_FLUSH_TIMEOUT_S = float(os.environ.get("OC_OPIK_FLUSH_TIMEOUT_S", "10"))
+SPAN_BATCH_ENV_NAMES = span_batch_env_names()
 
 
 # System-injected content classification.
@@ -1901,6 +1926,9 @@ def create_span_if_possible(client: Any, **kwargs: Any) -> None:
     if DRY_RUN:
         info(f"dry-run create_span name={kwargs.get('name')} id={kwargs.get('id')}")
         return
+    span_id = str(kwargs.get("id") or "")
+    if span_id and queue_span_snapshot(span_id, _span_payload_for_write(kwargs, update=False), SPAN_BATCH_ENV_NAMES):
+        return
     client.rest_client.spans.create_span(**kwargs)
 
 
@@ -1926,6 +1954,8 @@ def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run update_span id={span_id}")
         return
     filtered = _span_payload_for_write(kwargs, update=True)
+    if update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
+        return
     client.rest_client.spans.update_span(span_id, **filtered)
 
 
@@ -1943,10 +1973,13 @@ def create_or_update_span(client: Any, span_id: str, **kwargs: Any) -> None:
     if DRY_RUN:
         info(f"dry-run upsert_span name={kwargs.get('name')} id={span_id}")
         return
+    create_payload = _span_payload_for_write(kwargs, update=False)
+    if queue_span_snapshot(span_id, create_payload, SPAN_BATCH_ENV_NAMES):
+        return
     try:
         client.rest_client.spans.create_span(
             id=span_id,
-            **_span_payload_for_write(kwargs, update=False),
+            **create_payload,
         )
     except Exception as create_exc:
         filtered = _span_payload_for_write(kwargs, update=True)
@@ -3075,12 +3108,18 @@ def main() -> int:
         # turn this finally into a new hang.
         if deadline_installed:
             _clear_hook_deadline()
+        try:
+            batch_status = flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+        except Exception as exc:
+            batch_status = f"error:{exc.__class__.__name__}"
+            debug(f"span batch flush failed: {exc}")
         flush_status = _flush_with_timeout(client, OPIK_FLUSH_TIMEOUT_S)
         info(
             f"final flush: event={event_name or 'default'} session={session_id} "
             f"turns_seen={turns_seen} emitted={emitted} status={status} "
             f"data_source={data_source_str}"
         )
+        info(f"span batch flush: {batch_status}")
         info(f"client flush: {flush_status}")
 
     return 0
