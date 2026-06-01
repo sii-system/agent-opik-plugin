@@ -10,6 +10,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+# Harness assets (TS plugin, dist/, openclaw.plugin.json) live under harness/,
+# not next to this installer — build/link/register all operate on this dir.
+HARNESS_DIR="$REPO_ROOT/harness/openclaw"
 REQUIREMENTS="$REPO_ROOT/requirements.txt"
 PLUGIN_ID="openclaw-opik-tracer"
 
@@ -34,7 +37,7 @@ Commands:
   install     deps note + build + register (then run 'config')
   deps        Install the Python dependencies (requirements.txt)
   build       npm install && npm run build (produces dist/)
-  register    openclaw plugins install --link $ROOT_DIR  (+ enable)
+  register    openclaw plugins install --link $HARNESS_DIR  (+ enable)
   config      Print the 'openclaw config set ...' commands to run
   uninstall   openclaw plugins uninstall $PLUGIN_ID (+ gateway restart)
   status      Show resolved paths, deps, build, and tracer state
@@ -77,14 +80,14 @@ ensure_deps() {
 
 cmd_build() {
   command -v npm >/dev/null 2>&1 || { echo "npm not found on PATH" >&2; exit 1; }
-  ( cd "$ROOT_DIR" && npm install && npm run build )
-  echo "built: $ROOT_DIR/dist/index.js"
+  ( cd "$HARNESS_DIR" && npm install && npm run build )
+  echo "built: $HARNESS_DIR/dist/index.js"
 }
 
 cmd_register() {
   require_openclaw
-  [[ -f "$ROOT_DIR/dist/index.js" ]] || { echo "dist/ missing — run '$(basename "$0") build' first" >&2; exit 1; }
-  openclaw plugins install --link "$ROOT_DIR"
+  [[ -f "$HARNESS_DIR/dist/index.js" ]] || { echo "dist/ missing — run '$(basename "$0") build' first" >&2; exit 1; }
+  openclaw plugins install --link "$HARNESS_DIR"
   openclaw config set "plugins.entries.$PLUGIN_ID.enabled" true
   echo "registered + enabled: $PLUGIN_ID"
   echo "Next: $(basename "$0") config   (set your Opik credentials)"
@@ -98,7 +101,7 @@ openclaw config set plugins.entries.$PLUGIN_ID.config.opikWorkspace   "default"
 openclaw config set plugins.entries.$PLUGIN_ID.config.opikProjectName "openclaw"
 openclaw config set plugins.entries.$PLUGIN_ID.config.pythonPath      "$PYTHON_PATH_DEFAULT"
 openclaw gateway restart
-# Full config schema: $ROOT_DIR/openclaw.plugin.json
+# Full config schema: $HARNESS_DIR/openclaw.plugin.json
 EOF
 }
 
@@ -116,11 +119,11 @@ cmd_uninstall() {
 
 cmd_status() {
   echo "repo_root:   $REPO_ROOT"
-  echo "plugin_dir:  $ROOT_DIR"
+  echo "plugin_dir:  $HARNESS_DIR"
   echo "python:      $PYTHON_BIN ($($PYTHON_BIN --version 2>&1))"
   echo "pythonPath:  $PYTHON_PATH_DEFAULT"
   echo "openclaw:    $(command -v openclaw 2>/dev/null || echo '<not found>')"
-  echo "dist_built:  $([[ -f "$ROOT_DIR/dist/index.js" ]] && echo true || echo false)"
+  echo "dist_built:  $([[ -f "$HARNESS_DIR/dist/index.js" ]] && echo true || echo false)"
   echo
   echo "deps:"
   "$PYTHON_BIN" - <<'PY'
