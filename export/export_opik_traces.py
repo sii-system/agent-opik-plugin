@@ -10,8 +10,8 @@ downstream converters (``opik_trace_to_codetracer.py``,
 ``convert_trace_to_session_parquet.py``), which read exactly this format.
 
 Usage:
-  python export_opik_traces.py \\
-    --out-dir ./export \\
+  python export/export_opik_traces.py \\
+    --out-dir ./out \\
     [--project NAME] [--opik-url URL] [--workspace NAME] [--api-key KEY] \\
     [--filter 'tags contains "tb-task"'] \\
     [--max-results 1000] [--max-spans 5000] [--overwrite]
