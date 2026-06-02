@@ -2714,6 +2714,23 @@ def _on_user_prompt_submit(
     session.turn_number += 1
     session.last_flush_time = time.time()
 
+    if not session.trace_created:
+        # Create the session trace at prompt time so long-running tasks are
+        # visible in Opik as running before the first completed turn flushes.
+        start_time = parse_ts(session.trace_start_ts or now_ts)
+        ensure_trace(
+            client=client,
+            project_name=project_name,
+            trace_id=trace_id,
+            trace_name=trace_name,
+            session_id=session_id,
+            start_time=start_time,
+            end_time=start_time,
+            transcript_path=transcript_path,
+            session=session,
+        )
+        session.trace_created = True
+
     # Best-effort early turn span only when trace already exists.
     session.turn_span_id = new_opik_id(parse_ts(now_ts))
     if session.trace_created:
