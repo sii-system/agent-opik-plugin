@@ -25,8 +25,10 @@ Target resolution:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -132,10 +134,65 @@ def build_client(args: argparse.Namespace) -> Any:
     return client
 
 
+def _to_jsonable(obj: Any) -> Any:
+    """Convert an Opik pydantic model (TracePublic / SpanPublic) to a plain dict."""
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    return obj
+
+
+def _span_sort_key(span: Any) -> str:
+    """Sort spans chronologically; downstream converters expect llm order."""
+    return str(getattr(span, "start_time", "") or "")
+
+
+def _write_trace_file(out_dir: Path, trace: Any, spans: list[Any]) -> Path:
+    """Write one trace as a flat span list: [root_trace, span1, span2, ...].
+
+    The root (TracePublic) has no ``type`` field, so downstream converters pick
+    it up as the conversation root; spans carry ``type`` (e.g. "llm").
+    """
+    flat = [_to_jsonable(trace)] + [_to_jsonable(s) for s in spans]
+    path = out_dir / f"{trace.id}.json"
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(flat, handle, ensure_ascii=False, indent=2, default=str)
+    return path
+
+
 def run(args: argparse.Namespace) -> int:
-    """Execute the export. Filled in across subsequent steps."""
-    build_client(args)
-    raise NotImplementedError
+    """Execute the export."""
+    client = build_client(args)
+    project = client.config.project_name
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    traces = client.search_traces(
+        project_name=project,
+        filter_string=args.filter_string,
+        max_results=args.max_results,
+        truncate=False,
+    )
+    print(f"[export] {len(traces)} trace(s) matched", file=sys.stderr)
+
+    exported = skipped = 0
+    for trace in traces:
+        path = out_dir / f"{trace.id}.json"
+        if path.exists() and not args.overwrite:
+            skipped += 1
+            continue
+        spans = client.search_spans(
+            project_name=project,
+            trace_id=trace.id,
+            max_results=args.max_spans,
+            truncate=False,
+        )
+        spans.sort(key=_span_sort_key)
+        _write_trace_file(out_dir, trace, spans)
+        exported += 1
+        print(f"[export] wrote {trace.id} ({len(spans)} spans)", file=sys.stderr)
+
+    print(f"[export] done: exported={exported} skipped={skipped}", file=sys.stderr)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
