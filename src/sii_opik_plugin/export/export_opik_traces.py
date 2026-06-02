@@ -25,7 +25,9 @@ Target resolution:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
+from typing import Any
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -85,8 +87,54 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_required(flag_value: str | None, env_var: str, flag_name: str) -> str:
+    """Resolve a required setting: explicit flag > env var > hard error."""
+    value = flag_value or os.environ.get(env_var)
+    if not value:
+        raise SystemExit(
+            f"error: no value for {flag_name}. "
+            f"Pass {flag_name} or set ${env_var}."
+        )
+    return value
+
+
+def build_client(args: argparse.Namespace) -> Any:
+    """Resolve the target and construct an Opik client.
+
+    URL and project are mandatory (flag > env > error); workspace and api-key
+    are optional and fall back to the SDK's own config resolution.
+    """
+    try:
+        from opik import Opik
+    except ImportError as exc:  # pragma: no cover - depends on install
+        raise SystemExit(
+            "error: the 'opik' package is not installed. "
+            "Install it with: pip install opik"
+        ) from exc
+
+    url = _resolve_required(args.opik_url, "OPIK_URL", "--opik-url")
+    project = _resolve_required(args.project, "OPIK_PROJECT_NAME", "--project")
+
+    client = Opik(
+        host=url,
+        project_name=project,
+        workspace=args.workspace,
+        api_key=args.api_key,
+    )
+
+    cfg = client.config
+    print(
+        "[export] target resolved: "
+        f"url={cfg.url_override} workspace={cfg.workspace} "
+        f"project={cfg.project_name}",
+        file=sys.stderr,
+    )
+    return client
+
+
 def run(args: argparse.Namespace) -> int:
     """Execute the export. Filled in across subsequent steps."""
+    build_client(args)
     raise NotImplementedError
 
 
