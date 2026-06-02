@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -159,6 +160,24 @@ def _write_trace_file(out_dir: Path, trace: Any, spans: list[Any]) -> Path:
     return path
 
 
+def _manifest_entry(trace: Any, num_spans: int, file_name: str) -> dict[str, Any]:
+    return {
+        "trace_id": trace.id,
+        "name": getattr(trace, "name", None),
+        "thread_id": getattr(trace, "thread_id", None),
+        "start_time": str(getattr(trace, "start_time", "") or ""),
+        "num_spans": num_spans,
+        "tags": getattr(trace, "tags", None),
+        "file": file_name,
+    }
+
+
+def _write_manifest(out_dir: Path, header: dict[str, Any], entries: list[dict[str, Any]]) -> None:
+    manifest = {**header, "count": len(entries), "traces": entries}
+    with (out_dir / "manifest.json").open("w", encoding="utf-8") as handle:
+        json.dump(manifest, handle, ensure_ascii=False, indent=2, default=str)
+
+
 def run(args: argparse.Namespace) -> int:
     """Execute the export."""
     client = build_client(args)
@@ -172,26 +191,59 @@ def run(args: argparse.Namespace) -> int:
         max_results=args.max_results,
         truncate=False,
     )
+    if len(traces) >= args.max_results:
+        print(
+            f"[export] WARNING: hit --max-results={args.max_results}; "
+            "more traces may exist (raise --max-results to capture them).",
+            file=sys.stderr,
+        )
     print(f"[export] {len(traces)} trace(s) matched", file=sys.stderr)
 
-    exported = skipped = 0
+    header = {
+        "project": project,
+        "url": client.config.url_override,
+        "workspace": client.config.workspace,
+        "filter": args.filter_string,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    entries: list[dict[str, Any]] = []
+    exported = skipped = failed = 0
     for trace in traces:
         path = out_dir / f"{trace.id}.json"
-        if path.exists() and not args.overwrite:
-            skipped += 1
-            continue
-        spans = client.search_spans(
-            project_name=project,
-            trace_id=trace.id,
-            max_results=args.max_spans,
-            truncate=False,
-        )
-        spans.sort(key=_span_sort_key)
-        _write_trace_file(out_dir, trace, spans)
-        exported += 1
-        print(f"[export] wrote {trace.id} ({len(spans)} spans)", file=sys.stderr)
+        try:
+            spans = client.search_spans(
+                project_name=project,
+                trace_id=trace.id,
+                max_results=args.max_spans,
+                truncate=False,
+            )
+            if len(spans) >= args.max_spans:
+                print(
+                    f"[export] WARNING: trace {trace.id} hit --max-spans="
+                    f"{args.max_spans}; some spans may be missing.",
+                    file=sys.stderr,
+                )
+            # Always record the manifest entry so the trace is discoverable,
+            # even when we skip rewriting an existing file.
+            entries.append(_manifest_entry(trace, len(spans), path.name))
+            if path.exists() and not args.overwrite:
+                skipped += 1
+                continue
+            spans.sort(key=_span_sort_key)
+            _write_trace_file(out_dir, trace, spans)
+            exported += 1
+            print(f"[export] wrote {trace.id} ({len(spans)} spans)", file=sys.stderr)
+        except Exception as exc:  # fail-soft: one bad trace must not abort the run
+            failed += 1
+            print(f"[export] ERROR exporting {trace.id}: {exc}", file=sys.stderr)
 
-    print(f"[export] done: exported={exported} skipped={skipped}", file=sys.stderr)
+    _write_manifest(out_dir, header, entries)
+    print(
+        f"[export] done: exported={exported} skipped={skipped} failed={failed} "
+        f"-> {out_dir}/manifest.json",
+        file=sys.stderr,
+    )
     return 0
 
 
