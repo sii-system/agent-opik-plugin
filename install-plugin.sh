@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Top-level installer for the sii-opik-plugin harness tracers.
 #
-# Thin dispatcher over harness/<name>/install-<name>.sh — it doesn't reimplement
+# Thin dispatcher over installers/<name>/install-<name>.sh — it doesn't reimplement
 # any install logic, only forwards a command to one or more per-harness installer
 # scripts and surfaces post-install notes. Run bare for an interactive picker,
 # or pass a command + harness names for scripting.
@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Known harnesses, in display order. Each has a harness/<name>/install-<name>.sh.
+# Known harnesses, in display order. Each has an installers/<name>/install-<name>.sh.
 HARNESS_NAMES=(claude-code opencode openclaw)
 
 SELECTED=()
@@ -50,7 +50,7 @@ harness_cli() {
   esac
 }
 
-# Per-harness installer script name (lives in harness/<name>/).
+# Per-harness installer script name (lives in installers/<name>/).
 harness_script() {
   case "$1" in
     claude-code) echo install-claude.sh ;;
@@ -146,7 +146,7 @@ forward() {
   local cmd="$1"; shift
   local h dir script
   for h in "$@"; do
-    dir="$ROOT_DIR/harness/$h"
+    dir="$ROOT_DIR/installers/$h"
     script="$(harness_script "$h")"
     if [[ ! -f "$dir/$script" ]]; then
       echo "==> $h: no installer at $dir/$script" >&2

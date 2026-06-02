@@ -10,10 +10,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$ROOT_DIR/../.." && pwd)"
+# Harness assets (the TS plugin) live under harness/, not next to this installer.
+HARNESS_DIR="$REPO_ROOT/harness/opencode"
 REQUIREMENTS="$REPO_ROOT/requirements.txt"
 PYTHON_BIN="${OPENCODE_OPIK_PYTHON:-python3}"
 
-PLUGIN_SRC="$ROOT_DIR/opik-trace.ts"
+PLUGIN_SRC="$HARNESS_DIR/opik-trace.ts"
 # Match the env var the plugin reads at runtime (opik-trace.ts). Setting it
 # changes both what `install` copies and what OpenCode executes.
 HOOK_SRC="${OPENCODE_OPIK_HOOK_SCRIPT:-$REPO_ROOT/src/sii_opik_plugin/opencode/opencode_realtime_trace.py}"

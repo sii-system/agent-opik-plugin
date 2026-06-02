@@ -5,8 +5,9 @@ at `src/sii_opik_plugin/claude_code/claude_realtime_trace.py`.
 
 ## Install
 
-Use `install-claude.sh` in this directory. It resolves the hook script by its own
-location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to edit.
+Use `install-claude.sh` from `installers/claude-code/`. It resolves the hook
+script by its own location, so there is no `/ABSOLUTE/PATH/TO/...` placeholder to
+edit.
 
 ```
 # One step: installs Python deps if missing, then merges the 8 hooks
