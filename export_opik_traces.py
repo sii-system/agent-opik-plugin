@@ -10,7 +10,7 @@ downstream converters (``opik_trace_to_codetracer.py``,
 ``convert_trace_to_session_parquet.py``), which read exactly this format.
 
 Usage:
-  python -m sii_opik_plugin.export.export_opik_traces \\
+  python export_opik_traces.py \\
     --out-dir ./export \\
     [--project NAME] [--opik-url URL] [--workspace NAME] [--api-key KEY] \\
     [--filter 'tags contains "tb-task"'] \\

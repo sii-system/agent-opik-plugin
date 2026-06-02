@@ -40,14 +40,14 @@ Each harness can also be driven directly via its own
 
 ## Export traces
 
-`sii_opik_plugin.export.export_opik_traces` pulls traces back **out** of an Opik
-project (the inverse of the realtime tracer) and writes one JSON file per trace,
-shaped as a flat span list `[root_trace, span1, span2, …]` — the format the
-downstream converters (`opik_trace_to_codetracer.py`,
+`export_opik_traces.py` pulls traces back **out** of an Opik project (the
+inverse of the realtime tracer) and writes one JSON file per trace, shaped as a
+flat span list `[root_trace, span1, span2, …]` — the format the downstream
+converters (`opik_trace_to_codetracer.py`,
 `convert_trace_to_session_parquet.py`) read.
 
 ```
-python -m sii_opik_plugin.export.export_opik_traces \
+python export_opik_traces.py \
   --out-dir ./export \
   [--project NAME] [--opik-url URL] [--workspace NAME] [--api-key KEY] \
   [--filter 'tags contains "tb-task"'] \
