@@ -312,6 +312,17 @@ class TestOpikUsage:
         }
 
 
+# ── Trace metadata helpers ───────────────────────────────────────────────────
+
+
+class TestSessionMetadata:
+    def test_session_affinity_uses_session_key(self):
+        metadata = oot._session_metadata(oot.SessionState(), "session-123")
+
+        assert metadata["session_key"] == "session-123"
+        assert metadata["x-session-affinity"] == "session-123"
+
+
 # ── ID helpers ───────────────────────────────────────────────────────────────
 
 
