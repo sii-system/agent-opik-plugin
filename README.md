@@ -35,7 +35,7 @@ then runs each harness's setup. After install:
 
 Span writes are batched by default to reduce Opik backend / ClickHouse load.
 Set `OPIK_SPAN_BATCH_ENABLED=false` to fall back to the legacy single-span
-create/update path. Batches are capped at 20 spans per request by default;
+create/update path. Batches are capped at 5 spans per request by default;
 set `OPIK_SPAN_BATCH_SIZE` to tune the cap.
 
 Each harness can also be driven directly via its own

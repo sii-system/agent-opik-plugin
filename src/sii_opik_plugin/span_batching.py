@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 _TRUE_VALUES = {"1", "true", "yes", "on", "enabled"}
 _FALSE_VALUES = {"0", "false", "no", "off", "disabled"}
-_DEFAULT_BATCH_SIZE = 20
+_DEFAULT_BATCH_SIZE = 5
 _PENDING_SPANS: dict[str, dict[str, Any]] = {}
 
 

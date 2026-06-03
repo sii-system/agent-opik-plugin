@@ -78,7 +78,7 @@ def test_env_flag_can_disable_batching(monkeypatch):
 
 def test_batch_size_defaults_and_can_be_overridden(monkeypatch):
     monkeypatch.delenv("OPIK_SPAN_BATCH_SIZE", raising=False)
-    assert span_batching.span_batch_size() == 20
+    assert span_batching.span_batch_size() == 5
 
     monkeypatch.setenv("OPIK_SPAN_BATCH_SIZE", "2")
     assert span_batching.span_batch_size() == 2
@@ -87,7 +87,7 @@ def test_batch_size_defaults_and_can_be_overridden(monkeypatch):
     assert span_batching.span_batch_size() == 1
 
     monkeypatch.setenv("OPIK_SPAN_BATCH_SIZE", "invalid")
-    assert span_batching.span_batch_size() == 20
+    assert span_batching.span_batch_size() == 5
 
 
 def test_opencode_create_and_update_are_coalesced_into_one_batch(monkeypatch):
