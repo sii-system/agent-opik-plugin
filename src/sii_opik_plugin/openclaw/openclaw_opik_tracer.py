@@ -1267,6 +1267,7 @@ def _session_metadata(session: SessionState, session_key: str) -> dict[str, Any]
     snap = session.prev_usage_snapshot or {}
     meta = {
         "session_key": session_key,
+        "x-session-affinity": session_key,
         "source": "openclaw",
         "realtime": True,
         "models": models,
