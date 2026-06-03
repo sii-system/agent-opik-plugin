@@ -47,6 +47,10 @@ except Exception:
     Opik = None
     id_helpers = None
 
+_SPAN_BATCHING_SRC_ROOT = Path(__file__).resolve().parents[2]
+if (_SPAN_BATCHING_SRC_ROOT / "sii_opik_plugin" / "span_batching.py").exists():
+    sys.path.insert(0, str(_SPAN_BATCHING_SRC_ROOT))
+
 try:
     from sii_opik_plugin.span_batching import (
         flush_span_batch,
@@ -54,22 +58,15 @@ try:
         span_batch_env_names,
         update_queued_span,
     )
-except Exception:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-    try:
-        from sii_opik_plugin.span_batching import (
-            flush_span_batch,
-            queue_span_snapshot,
-            span_batch_env_names,
-            update_queued_span,
-        )
-    except Exception:
-        from span_batching import (  # type: ignore
-            flush_span_batch,
-            queue_span_snapshot,
-            span_batch_env_names,
-            update_queued_span,
-        )
+except ModuleNotFoundError as exc:
+    if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
+        raise
+    from span_batching import (
+        flush_span_batch,
+        queue_span_snapshot,
+        span_batch_env_names,
+        update_queued_span,
+    )
 
 try:
     from uuid6 import uuid7 as _uuid7
