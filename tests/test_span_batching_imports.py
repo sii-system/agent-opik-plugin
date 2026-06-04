@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-def test_claude_span_batching_import_does_not_mask_helper_errors(tmp_path):
+def test_claude_span_batching_import_reports_helper_errors(tmp_path):
     package_dir = tmp_path / "sii_opik_plugin"
     package_dir.mkdir()
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -44,5 +44,6 @@ def test_claude_span_batching_import_does_not_mask_helper_errors(tmp_path):
         check=False,
     )
 
-    assert result.returncode != 0
+    assert result.returncode == 0
+    assert "span batching unavailable" in result.stderr
     assert "broken span batching helper" in result.stderr

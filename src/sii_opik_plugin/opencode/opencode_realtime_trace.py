@@ -46,6 +46,7 @@ _SPAN_BATCHING_SRC_ROOT = Path(__file__).resolve().parents[2]
 if (_SPAN_BATCHING_SRC_ROOT / "sii_opik_plugin" / "span_batching.py").exists():
     sys.path.insert(0, str(_SPAN_BATCHING_SRC_ROOT))
 
+_SPAN_BATCHING_IMPORT_ERROR = ""
 try:
     from sii_opik_plugin.span_batching import (
         flush_span_batch,
@@ -54,14 +55,56 @@ try:
         update_queued_span,
     )
 except ModuleNotFoundError as exc:
-    if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
-        raise
-    from span_batching import (
-        flush_span_batch,
-        queue_span_snapshot,
-        span_batch_env_names,
-        update_queued_span,
-    )
+    try:
+        if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
+            raise
+        from span_batching import (
+            flush_span_batch,
+            queue_span_snapshot,
+            span_batch_env_names,
+            update_queued_span,
+        )
+    except Exception as fallback_exc:
+        _SPAN_BATCHING_IMPORT_ERROR = (
+            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}"
+        )
+except Exception as exc:
+    _SPAN_BATCHING_IMPORT_ERROR = f"span batching unavailable: {exc.__class__.__name__}: {exc}"
+
+if _SPAN_BATCHING_IMPORT_ERROR:
+    print(_SPAN_BATCHING_IMPORT_ERROR, file=sys.stderr)
+
+    def span_batch_env_names() -> tuple[str, ...]:
+        return ("OPIK_SPAN_BATCH_ENABLED",)
+
+    def queue_span_snapshot(
+        span_id: str,
+        payload: dict[str, Any],
+        env_names: tuple[str, ...],
+        *,
+        default_enabled: bool = True,
+    ) -> bool:
+        return False
+
+    def update_queued_span(
+        span_id: str,
+        updates: dict[str, Any],
+        env_names: tuple[str, ...],
+        *,
+        default_enabled: bool = True,
+    ) -> bool:
+        return False
+
+    def flush_span_batch(
+        client: Any,
+        env_names: tuple[str, ...],
+        *,
+        log: Any | None = None,
+        default_enabled: bool = True,
+    ) -> str:
+        if log is not None:
+            log(_SPAN_BATCHING_IMPORT_ERROR)
+        return "unavailable"
 
 try:
     from uuid6 import uuid7 as _uuid7
