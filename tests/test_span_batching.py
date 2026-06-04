@@ -64,10 +64,23 @@ def teardown_function() -> None:
     span_batching.clear_pending_spans()
 
 
-def test_env_flag_defaults_to_enabled(monkeypatch):
+def test_batching_defaults_to_disabled(monkeypatch):
     monkeypatch.delenv("OPIK_SPAN_BATCH_ENABLED", raising=False)
+    client = _FakeClient()
 
-    assert span_batching.env_flag_enabled(("OPIK_SPAN_BATCH_ENABLED",)) is True
+    assert not span_batching.queue_span_snapshot(
+        "span-1",
+        {
+            "trace_id": "trace-1",
+            "project_name": "proj",
+            "name": "turn-1",
+            "type": "general",
+            "start_time": datetime(2026, 1, 1),
+        },
+        ("OPIK_SPAN_BATCH_ENABLED",),
+    )
+    assert span_batching.flush_span_batch(client, ("OPIK_SPAN_BATCH_ENABLED",)) == "disabled"
+    assert span_batching.pending_span_count() == 0
 
 
 def test_env_flag_can_disable_batching(monkeypatch):
@@ -160,6 +173,24 @@ def test_flush_chunks_by_batch_size(monkeypatch):
 
 def test_opencode_batching_can_be_disabled(monkeypatch):
     monkeypatch.setenv("OPIK_SPAN_BATCH_ENABLED", "false")
+    client = _FakeClient()
+
+    ort.create_or_update_span(
+        client,
+        "span-1",
+        trace_id="trace-1",
+        project_name="proj",
+        name="turn-1",
+        type="general",
+        start_time=datetime(2026, 1, 1),
+    )
+
+    assert len(client.rest_client.spans.created) == 1
+    assert span_batching.pending_span_count() == 0
+
+
+def test_opencode_batching_defaults_to_legacy_path(monkeypatch):
+    monkeypatch.delenv("OPIK_SPAN_BATCH_ENABLED", raising=False)
     client = _FakeClient()
 
     ort.create_or_update_span(

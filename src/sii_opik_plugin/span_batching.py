@@ -61,7 +61,7 @@ def queue_span_snapshot(
     payload: dict[str, Any],
     env_names: tuple[str, ...],
     *,
-    default_enabled: bool = True,
+    default_enabled: bool = False,
 ) -> bool:
     if not env_flag_enabled(env_names, default=default_enabled):
         return False
@@ -77,7 +77,7 @@ def update_queued_span(
     updates: dict[str, Any],
     env_names: tuple[str, ...],
     *,
-    default_enabled: bool = True,
+    default_enabled: bool = False,
 ) -> bool:
     if not env_flag_enabled(env_names, default=default_enabled):
         return False
@@ -108,7 +108,7 @@ def flush_span_batch(
     env_names: tuple[str, ...],
     *,
     log: Callable[[str], None] | None = None,
-    default_enabled: bool = True,
+    default_enabled: bool = False,
 ) -> str:
     if client is None:
         return "skipped"
