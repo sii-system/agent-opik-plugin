@@ -45,7 +45,7 @@ _SPAN_BATCHING_SRC_ROOT = Path(__file__).resolve().parents[2]
 if (_SPAN_BATCHING_SRC_ROOT / "sii_opik_plugin" / "span_batching.py").exists():
     sys.path.insert(0, str(_SPAN_BATCHING_SRC_ROOT))
 
-_SPAN_BATCHING_IMPORT_ERROR = ""
+SPAN_BATCHING_AVAILABLE = False
 try:
     from sii_opik_plugin.span_batching import (
         flush_span_batch,
@@ -53,6 +53,7 @@ try:
         span_batch_env_names,
         update_queued_span,
     )
+    SPAN_BATCHING_AVAILABLE = True
 except ModuleNotFoundError as exc:
     try:
         if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
@@ -63,47 +64,14 @@ except ModuleNotFoundError as exc:
             span_batch_env_names,
             update_queued_span,
         )
+        SPAN_BATCHING_AVAILABLE = True
     except Exception as fallback_exc:
-        _SPAN_BATCHING_IMPORT_ERROR = (
-            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}"
+        print(
+            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}",
+            file=sys.stderr,
         )
 except Exception as exc:
-    _SPAN_BATCHING_IMPORT_ERROR = f"span batching unavailable: {exc.__class__.__name__}: {exc}"
-
-if _SPAN_BATCHING_IMPORT_ERROR:
-    print(_SPAN_BATCHING_IMPORT_ERROR, file=sys.stderr)
-
-    def span_batch_env_names() -> tuple[str, ...]:
-        return ("OPIK_SPAN_BATCH_ENABLED",)
-
-    def queue_span_snapshot(
-        span_id: str,
-        payload: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def update_queued_span(
-        span_id: str,
-        updates: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def flush_span_batch(
-        client: Any,
-        env_names: tuple[str, ...],
-        *,
-        log: Any | None = None,
-        default_enabled: bool = True,
-    ) -> str:
-        if log is not None:
-            log(_SPAN_BATCHING_IMPORT_ERROR)
-        return "unavailable"
+    print(f"span batching unavailable: {exc.__class__.__name__}: {exc}", file=sys.stderr)
 
 try:
     from uuid6 import uuid7 as _uuid7
@@ -122,7 +90,7 @@ DRY_RUN = os.environ.get("OC_OPIK_DRY_RUN", "").lower() == "true"
 MAX_TEXT_CHARS = int(os.environ.get("OC_OPIK_MAX_TEXT_CHARS", "20000"))
 DEFAULT_PROJECT = os.environ.get("OPIK_PROJECT_NAME", "openclaw")
 FLUSH_INTERVAL_S = 5
-SPAN_BATCH_ENV_NAMES = span_batch_env_names()
+SPAN_BATCH_ENV_NAMES = span_batch_env_names() if SPAN_BATCHING_AVAILABLE else ("OPIK_SPAN_BATCH_ENABLED",)
 PROCESS_TIMEOUT_S = int(os.environ.get("OC_OPIK_PROCESS_TIMEOUT_S", "15"))
 PINCHBENCH_TASK_ID = (os.environ.get("PINCHBENCH_TASK_ID") or "").strip()
 PINCHBENCH_RUN_ID = (os.environ.get("PINCHBENCH_RUN_ID") or "").strip()
@@ -1164,7 +1132,7 @@ def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run update_span id={span_id}")
         return
     filtered = {k: v for k, v in kwargs.items() if k not in _UPDATE_SPAN_UNSUPPORTED}
-    if update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
         return
     client.rest_client.spans.update_span(span_id, **filtered)
 
@@ -1172,7 +1140,7 @@ def create_or_update_span(client: Any, span_id: str, **kwargs: Any) -> None:
     if DRY_RUN:
         info(f"dry-run upsert_span name={kwargs.get('name')} id={span_id}")
         return
-    if queue_span_snapshot(span_id, kwargs, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and queue_span_snapshot(span_id, kwargs, SPAN_BATCH_ENV_NAMES):
         return
     try:
         client.rest_client.spans.create_span(id=span_id, **kwargs)
@@ -1858,7 +1826,8 @@ def rollback_flush(session: SessionState) -> None:
 
 def _flush_client(client: Any) -> bool:
     try:
-        flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+        if SPAN_BATCHING_AVAILABLE:
+            flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
         if hasattr(client, "flush"):
             client.flush()
         elif hasattr(client, "end"):

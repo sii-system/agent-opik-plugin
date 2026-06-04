@@ -51,7 +51,7 @@ _SPAN_BATCHING_SRC_ROOT = Path(__file__).resolve().parents[2]
 if (_SPAN_BATCHING_SRC_ROOT / "sii_opik_plugin" / "span_batching.py").exists():
     sys.path.insert(0, str(_SPAN_BATCHING_SRC_ROOT))
 
-_SPAN_BATCHING_IMPORT_ERROR = ""
+SPAN_BATCHING_AVAILABLE = False
 try:
     from sii_opik_plugin.span_batching import (
         flush_span_batch,
@@ -59,6 +59,7 @@ try:
         span_batch_env_names,
         update_queued_span,
     )
+    SPAN_BATCHING_AVAILABLE = True
 except ModuleNotFoundError as exc:
     try:
         if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
@@ -69,47 +70,14 @@ except ModuleNotFoundError as exc:
             span_batch_env_names,
             update_queued_span,
         )
+        SPAN_BATCHING_AVAILABLE = True
     except Exception as fallback_exc:
-        _SPAN_BATCHING_IMPORT_ERROR = (
-            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}"
+        print(
+            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}",
+            file=sys.stderr,
         )
 except Exception as exc:
-    _SPAN_BATCHING_IMPORT_ERROR = f"span batching unavailable: {exc.__class__.__name__}: {exc}"
-
-if _SPAN_BATCHING_IMPORT_ERROR:
-    print(_SPAN_BATCHING_IMPORT_ERROR, file=sys.stderr)
-
-    def span_batch_env_names() -> tuple[str, ...]:
-        return ("OPIK_SPAN_BATCH_ENABLED",)
-
-    def queue_span_snapshot(
-        span_id: str,
-        payload: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def update_queued_span(
-        span_id: str,
-        updates: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def flush_span_batch(
-        client: Any,
-        env_names: tuple[str, ...],
-        *,
-        log: Any | None = None,
-        default_enabled: bool = True,
-    ) -> str:
-        if log is not None:
-            log(_SPAN_BATCHING_IMPORT_ERROR)
-        return "unavailable"
+    print(f"span batching unavailable: {exc.__class__.__name__}: {exc}", file=sys.stderr)
 
 try:
     from uuid6 import uuid7 as _uuid7
@@ -135,7 +103,7 @@ DEFAULT_PROJECT = os.environ.get("CC_OPIK_PROJECT", "claude-code-realtime")
 FLUSH_INTERVAL_S = 5
 TRANSCRIPT_WAIT_TIMEOUT_S = float(os.environ.get("CC_OPIK_TRANSCRIPT_WAIT_TIMEOUT_S", "2.0"))
 TRANSCRIPT_WAIT_INTERVAL_S = float(os.environ.get("CC_OPIK_TRANSCRIPT_WAIT_INTERVAL_S", "0.05"))
-SPAN_BATCH_ENV_NAMES = span_batch_env_names()
+SPAN_BATCH_ENV_NAMES = span_batch_env_names() if SPAN_BATCHING_AVAILABLE else ("OPIK_SPAN_BATCH_ENABLED",)
 
 
 # ── Runtime env helpers ───────────────────────────────────────────────────────
@@ -1995,7 +1963,11 @@ def create_span_if_possible(client: Any, **kwargs: Any) -> None:
         info(f"dry-run create_span name={kwargs.get('name')} id={kwargs.get('id')}")
         return
     span_id = str(kwargs.get("id") or "")
-    if span_id and queue_span_snapshot(span_id, {k: v for k, v in kwargs.items() if k != "id"}, SPAN_BATCH_ENV_NAMES):
+    if (
+        SPAN_BATCHING_AVAILABLE
+        and span_id
+        and queue_span_snapshot(span_id, {k: v for k, v in kwargs.items() if k != "id"}, SPAN_BATCH_ENV_NAMES)
+    ):
         return
     client.rest_client.spans.create_span(**kwargs)
 
@@ -2008,7 +1980,7 @@ def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run update_span id={span_id}")
         return
     filtered = {k: v for k, v in kwargs.items() if k not in _UPDATE_SPAN_UNSUPPORTED}
-    if update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
         return
     client.rest_client.spans.update_span(span_id, **filtered)
 
@@ -2017,7 +1989,7 @@ def create_or_update_span_if_possible(client: Any, span_id: str, **kwargs: Any) 
     if DRY_RUN:
         info(f"dry-run upsert_span name={kwargs.get('name')} id={span_id}")
         return
-    if queue_span_snapshot(span_id, kwargs, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and queue_span_snapshot(span_id, kwargs, SPAN_BATCH_ENV_NAMES):
         return
     try:
         client.rest_client.spans.create_span(id=span_id, **kwargs)
@@ -3268,7 +3240,8 @@ def replay_timeout_from_backup(logs_dir: Path) -> int:
         )
         if client is not None:
             try:
-                flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+                if SPAN_BATCHING_AVAILABLE:
+                    flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
                 client.flush()
             except Exception:
                 pass
@@ -3479,7 +3452,8 @@ def main() -> int:
 
         try:
             if client is not None:
-                flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+                if SPAN_BATCHING_AVAILABLE:
+                    flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
                 client.flush()
         except Exception:
             pass

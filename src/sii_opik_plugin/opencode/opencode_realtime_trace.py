@@ -46,7 +46,7 @@ _SPAN_BATCHING_SRC_ROOT = Path(__file__).resolve().parents[2]
 if (_SPAN_BATCHING_SRC_ROOT / "sii_opik_plugin" / "span_batching.py").exists():
     sys.path.insert(0, str(_SPAN_BATCHING_SRC_ROOT))
 
-_SPAN_BATCHING_IMPORT_ERROR = ""
+SPAN_BATCHING_AVAILABLE = False
 try:
     from sii_opik_plugin.span_batching import (
         flush_span_batch,
@@ -54,6 +54,7 @@ try:
         span_batch_env_names,
         update_queued_span,
     )
+    SPAN_BATCHING_AVAILABLE = True
 except ModuleNotFoundError as exc:
     try:
         if exc.name not in {"sii_opik_plugin", "sii_opik_plugin.span_batching"}:
@@ -64,47 +65,14 @@ except ModuleNotFoundError as exc:
             span_batch_env_names,
             update_queued_span,
         )
+        SPAN_BATCHING_AVAILABLE = True
     except Exception as fallback_exc:
-        _SPAN_BATCHING_IMPORT_ERROR = (
-            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}"
+        print(
+            f"span batching unavailable: {fallback_exc.__class__.__name__}: {fallback_exc}",
+            file=sys.stderr,
         )
 except Exception as exc:
-    _SPAN_BATCHING_IMPORT_ERROR = f"span batching unavailable: {exc.__class__.__name__}: {exc}"
-
-if _SPAN_BATCHING_IMPORT_ERROR:
-    print(_SPAN_BATCHING_IMPORT_ERROR, file=sys.stderr)
-
-    def span_batch_env_names() -> tuple[str, ...]:
-        return ("OPIK_SPAN_BATCH_ENABLED",)
-
-    def queue_span_snapshot(
-        span_id: str,
-        payload: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def update_queued_span(
-        span_id: str,
-        updates: dict[str, Any],
-        env_names: tuple[str, ...],
-        *,
-        default_enabled: bool = True,
-    ) -> bool:
-        return False
-
-    def flush_span_batch(
-        client: Any,
-        env_names: tuple[str, ...],
-        *,
-        log: Any | None = None,
-        default_enabled: bool = True,
-    ) -> str:
-        if log is not None:
-            log(_SPAN_BATCHING_IMPORT_ERROR)
-        return "unavailable"
+    print(f"span batching unavailable: {exc.__class__.__name__}: {exc}", file=sys.stderr)
 
 try:
     from uuid6 import uuid7 as _uuid7
@@ -136,7 +104,7 @@ HOOK_DEADLINE_S = float(os.environ.get("OC_OPIK_HOOK_DEADLINE_S", "60"))
 # daemon thread that we join with this timeout; if it doesn't return in time we
 # log `flush=timeout` and exit (the leaked daemon dies with the process).
 OPIK_FLUSH_TIMEOUT_S = float(os.environ.get("OC_OPIK_FLUSH_TIMEOUT_S", "10"))
-SPAN_BATCH_ENV_NAMES = span_batch_env_names()
+SPAN_BATCH_ENV_NAMES = span_batch_env_names() if SPAN_BATCHING_AVAILABLE else ("OPIK_SPAN_BATCH_ENABLED",)
 
 
 # System-injected content classification.
@@ -1967,7 +1935,11 @@ def create_span_if_possible(client: Any, **kwargs: Any) -> None:
         info(f"dry-run create_span name={kwargs.get('name')} id={kwargs.get('id')}")
         return
     span_id = str(kwargs.get("id") or "")
-    if span_id and queue_span_snapshot(span_id, _span_payload_for_write(kwargs, update=False), SPAN_BATCH_ENV_NAMES):
+    if (
+        SPAN_BATCHING_AVAILABLE
+        and span_id
+        and queue_span_snapshot(span_id, _span_payload_for_write(kwargs, update=False), SPAN_BATCH_ENV_NAMES)
+    ):
         return
     client.rest_client.spans.create_span(**kwargs)
 
@@ -1994,7 +1966,7 @@ def update_span_if_possible(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run update_span id={span_id}")
         return
     filtered = _span_payload_for_write(kwargs, update=True)
-    if update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and update_queued_span(span_id, filtered, SPAN_BATCH_ENV_NAMES):
         return
     client.rest_client.spans.update_span(span_id, **filtered)
 
@@ -2014,7 +1986,7 @@ def create_or_update_span(client: Any, span_id: str, **kwargs: Any) -> None:
         info(f"dry-run upsert_span name={kwargs.get('name')} id={span_id}")
         return
     create_payload = _span_payload_for_write(kwargs, update=False)
-    if queue_span_snapshot(span_id, create_payload, SPAN_BATCH_ENV_NAMES):
+    if SPAN_BATCHING_AVAILABLE and queue_span_snapshot(span_id, create_payload, SPAN_BATCH_ENV_NAMES):
         return
     try:
         client.rest_client.spans.create_span(
@@ -3149,7 +3121,10 @@ def main() -> int:
         if deadline_installed:
             _clear_hook_deadline()
         try:
-            batch_status = flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+            if SPAN_BATCHING_AVAILABLE:
+                batch_status = flush_span_batch(client, SPAN_BATCH_ENV_NAMES, log=info)
+            else:
+                batch_status = "unavailable"
         except Exception as exc:
             batch_status = f"error:{exc.__class__.__name__}"
             debug(f"span batch flush failed: {exc}")
