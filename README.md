@@ -33,6 +33,12 @@ then runs each harness's setup. After install:
 - **opencode** — export `OPIK_URL_OVERRIDE` + `OPIK_PROJECT_NAME`, then run `opencode`.
 - **openclaw** — run `./install-plugin.sh config openclaw` and paste in your Opik API key.
 
+Span write batching is opt-in to reduce Opik backend / ClickHouse load in
+managed deployments. Set `OPIK_SPAN_BATCH_ENABLED=true` to batch span writes;
+otherwise tracers use the legacy single-span create/update path. Batches are
+capped at 5 spans per request by default; set `OPIK_SPAN_BATCH_SIZE` to tune
+the cap.
+
 Each harness can also be driven directly via its own
 `harness/<name>/install-<name>.sh` (e.g. `install-claude.sh`,
 `install-opencode.sh`, `install-openclaw.sh`); see each harness directory's
