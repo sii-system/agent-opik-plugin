@@ -52,22 +52,22 @@ class TestApplyOpikEnvOverrides:
 class TestRuntimeContextMetadata:
     def test_only_includes_non_empty_values(self, monkeypatch):
         for name in (
-            "TB_TASK_ID", "TB_RUN_ID", "TB_DATASET", "TB_TRIAL_ID",
+            "HARBOR_TASK_ID", "HARBOR_RUN_ID", "HARBOR_DATASET", "HARBOR_TRIAL_ID",
             "OPIK_PROJECT_NAME", "CC_OPIK_PROJECT",
             "OPIK_URL_OVERRIDE", "OPIK_URL",
         ):
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.setenv("TB_TASK_ID", "task-1")
+        monkeypatch.setenv("HARBOR_TASK_ID", "task-1")
         monkeypatch.setenv("OPIK_URL", "https://primary.example")
         meta = crt.runtime_context_metadata()
         assert meta == {
-            "tb_task_id": "task-1",
+            "harbor_task_id": "task-1",
             "opik_url": "https://primary.example",
         }
 
     def test_empty_when_no_env(self, monkeypatch):
         for name in (
-            "TB_TASK_ID", "TB_RUN_ID", "TB_DATASET", "TB_TRIAL_ID",
+            "HARBOR_TASK_ID", "HARBOR_RUN_ID", "HARBOR_DATASET", "HARBOR_TRIAL_ID",
             "OPIK_PROJECT_NAME", "CC_OPIK_PROJECT",
             "OPIK_URL_OVERRIDE", "OPIK_URL",
         ):

@@ -59,7 +59,7 @@ class TestApplyOpikEnvOverrides:
 
 class TestRuntimeContextMetadata:
     _ALL = (
-        "TB_TASK_ID", "TB_RUN_ID", "TB_DATASET", "TB_TRIAL_ID",
+        "HARBOR_TASK_ID", "HARBOR_RUN_ID", "HARBOR_DATASET", "HARBOR_TRIAL_ID",
         "OPIK_TRIAL_NAME", "OPIK_PROJECT_NAME", "OC_OPIK_PROJECT",
         "OPIK_URL_OVERRIDE", "OPIK_URL",
     )
@@ -67,11 +67,11 @@ class TestRuntimeContextMetadata:
     def test_only_includes_non_empty_values(self, monkeypatch):
         for name in self._ALL:
             monkeypatch.delenv(name, raising=False)
-        monkeypatch.setenv("TB_TASK_ID", "task-1")
+        monkeypatch.setenv("HARBOR_TASK_ID", "task-1")
         monkeypatch.setenv("OPIK_URL", "https://primary.example")
         meta = ort.runtime_context_metadata()
         assert meta == {
-            "tb_task_id": "task-1",
+            "harbor_task_id": "task-1",
             "opik_url": "https://primary.example",
         }
 
