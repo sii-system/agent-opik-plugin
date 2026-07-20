@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-OPIK=(uvx --python 3.10 --from opik==2.1.27 opik)
+OPIK=(uvx --python 3.10 --from opik==2.1.27 --with socksio opik)
 
 export_trace() {
   : "${SOURCE_URL:?Set SOURCE_URL}"
