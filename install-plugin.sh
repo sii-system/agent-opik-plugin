@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Top-level installer for the sii-opik-plugin harness tracers.
+# Top-level installer for the agent-opik-plugin harness tracers.
 #
 # Thin dispatcher over harness/<name>/install-<name>.sh — it doesn't reimplement
 # any install logic, only forwards a command to one or more per-harness installer

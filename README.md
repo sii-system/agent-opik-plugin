@@ -1,4 +1,4 @@
-# sii-opik-plugin
+# agent-opik-plugin
 
 Realtime tracing of agent-harness sessions to [Opik](https://github.com/comet-ml/opik).
 One Python tracer per harness lives under `src/sii_opik_plugin/<harness>/`, with
