@@ -133,10 +133,10 @@ def apply_opik_env_overrides() -> None:
 def runtime_context_metadata() -> dict[str, Any]:
     meta: dict[str, Any] = {}
     mapping = {
-        "tb_task_id": _env_first("TB_TASK_ID"),
-        "tb_run_id": _env_first("TB_RUN_ID"),
-        "tb_dataset": _env_first("TB_DATASET"),
-        "tb_trial_id": _env_first("TB_TRIAL_ID"),
+        "harbor_task_id": _env_first("HARBOR_TASK_ID"),
+        "harbor_run_id": _env_first("HARBOR_RUN_ID"),
+        "harbor_dataset": _env_first("HARBOR_DATASET"),
+        "harbor_trial_id": _env_first("HARBOR_TRIAL_ID"),
         "opik_project_name": _env_first("OPIK_PROJECT_NAME", "CC_OPIK_PROJECT"),
         "opik_url": _env_first("OPIK_URL_OVERRIDE", "OPIK_URL"),
     }
@@ -1927,12 +1927,12 @@ def _session_tags(session: SessionState) -> list[str]:
     """Build session-level tags including model tags."""
     models = sorted(session.session_models) if session.session_models else []
     tags = ["claude-code", "session", "realtime", *[f"model:{m}" for m in models]]
-    task_id = _env_first("TB_TASK_ID")
-    run_id = _env_first("TB_RUN_ID")
+    task_id = _env_first("HARBOR_TASK_ID")
+    run_id = _env_first("HARBOR_RUN_ID")
     if task_id:
-        tags.append(f"tb-task:{task_id}")
+        tags.append(f"harbor-task:{task_id}")
     if run_id:
-        tags.append(f"tb-run:{run_id}")
+        tags.append(f"harbor-run:{run_id}")
     return tags
 
 

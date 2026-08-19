@@ -1650,10 +1650,10 @@ def runtime_context_metadata() -> dict[str, Any]:
     """
     meta: dict[str, Any] = {}
     mapping = {
-        "tb_task_id": _env_first("TB_TASK_ID"),
-        "tb_run_id": _env_first("TB_RUN_ID"),
-        "tb_dataset": _env_first("TB_DATASET"),
-        "tb_trial_id": _env_first("TB_TRIAL_ID"),
+        "harbor_task_id": _env_first("HARBOR_TASK_ID"),
+        "harbor_run_id": _env_first("HARBOR_RUN_ID"),
+        "harbor_dataset": _env_first("HARBOR_DATASET"),
+        "harbor_trial_id": _env_first("HARBOR_TRIAL_ID"),
         "opik_trial_name": _env_first("OPIK_TRIAL_NAME"),
         "opik_project_name": _env_first("OPIK_PROJECT_NAME", "OC_OPIK_PROJECT"),
         "opik_url": _env_first("OPIK_URL_OVERRIDE", "OPIK_URL"),
@@ -2017,21 +2017,21 @@ def _clean_trace_token(value: str) -> str:
 
 
 def benchmark_task_key() -> str | None:
-    """Pick a stable task identifier for the trace name when running under TB.
+    """Pick a stable task identifier for the trace name when running under Harbor.
 
-    Falls back through TB_TASK_ID > OPENCLAW_SESSION_KEY > OPIK_TRIAL_NAME;
-    if none are set, a single-task TB_INCLUDE_TASKS / INCLUDE_TASKS list also
+    Falls back through HARBOR_TASK_ID > OPENCLAW_SESSION_KEY > OPIK_TRIAL_NAME;
+    if none are set, a single-task HARBOR_INCLUDE_TASKS / INCLUDE_TASKS list also
     qualifies as a task key (this is how Harbor injects single-task runs).
     """
     key = (
-        _env_first("TB_TASK_ID")
+        _env_first("HARBOR_TASK_ID")
         or _env_first("OPENCLAW_SESSION_KEY", "OPENCLAW_SESSIONKEY")
         or _env_first("OPIK_TRIAL_NAME")
     )
     if key:
         return key
 
-    include_tasks = _env_first("TB_INCLUDE_TASKS", "INCLUDE_TASKS")
+    include_tasks = _env_first("HARBOR_INCLUDE_TASKS", "INCLUDE_TASKS")
     if include_tasks:
         parts = [part.strip() for part in include_tasks.split(",") if part.strip()]
         if len(parts) == 1:
@@ -2042,14 +2042,14 @@ def benchmark_task_key() -> str | None:
 def is_benchmark_context() -> bool:
     return bool(
         _env_first(
-            "TB_TASK_ID",
+            "HARBOR_TASK_ID",
             "OPENCLAW_SESSION_KEY",
             "OPENCLAW_SESSIONKEY",
-            "TB_RUN_ID",
-            "TB_DATASET",
-            "TB_TRIAL_ID",
+            "HARBOR_RUN_ID",
+            "HARBOR_DATASET",
+            "HARBOR_TRIAL_ID",
             "OPIK_TRIAL_NAME",
-            "TB_INCLUDE_TASKS",
+            "HARBOR_INCLUDE_TASKS",
             "INCLUDE_TASKS",
         )
     )
@@ -2073,8 +2073,8 @@ def trace_name_for_session(session: SessionState, session_meta: Any) -> str:
       1. cached on session.trace_name (unless it's a legacy
          "opencode · <slug>" placeholder, which we replace)
       2. benchmark mode -> "task({task_key})_{YYYYMMDD_HHMMSS}" where
-         task_key := TB_TASK_ID > OPENCLAW_SESSION_KEY > OPIK_TRIAL_NAME
-         > single-element TB_INCLUDE_TASKS; if no key but TB env vars are
+         task_key := HARBOR_TASK_ID > OPENCLAW_SESSION_KEY > OPIK_TRIAL_NAME
+         > single-element HARBOR_INCLUDE_TASKS; if no key but HARBOR env vars are
          set, falls back to session_id[:8]
       3. title-based default -> "opencode · {title[:80]}" or "opencode · {session_id[:8]}"
     """
@@ -2101,16 +2101,16 @@ def trace_name_for_session(session: SessionState, session_meta: Any) -> str:
 def session_tags(turns: list[Any]) -> list[str]:
     stats = _session_stats(turns)
     tags = ["opencode", "session", "realtime", *[f"model:{m}" for m in stats["all_models"]]]
-    task_id = _env_first("TB_TASK_ID")
-    run_id = _env_first("TB_RUN_ID")
-    trial_id = _env_first("TB_TRIAL_ID")
+    task_id = _env_first("HARBOR_TASK_ID")
+    run_id = _env_first("HARBOR_RUN_ID")
+    trial_id = _env_first("HARBOR_TRIAL_ID")
     trial_name = _env_first("OPIK_TRIAL_NAME")
     if task_id:
-        tags.append(f"tb-task:{task_id}")
+        tags.append(f"harbor-task:{task_id}")
     if run_id:
-        tags.append(f"tb-run:{run_id}")
+        tags.append(f"harbor-run:{run_id}")
     if trial_id:
-        tags.append(f"tb-trial:{trial_id}")
+        tags.append(f"harbor-trial:{trial_id}")
     if trial_name:
         tags.append(f"harbor-trial:{trial_name}")
     return tags
