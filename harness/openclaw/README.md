@@ -1,10 +1,11 @@
 # OpenClaw → Opik realtime tracing
 
 OpenClaw plugin that streams session activity to Opik. Hooks act only as
-triggers — the actual data comes from the session JSONL transcript that
-OpenClaw writes under `~/.openclaw/agents/<agent>/sessions/<id>.jsonl`,
-which avoids hook payload races (missing `sessionKey`, premature cleanup,
-concurrent overwrites).
+triggers — the actual data comes from OpenClaw's authoritative transcript
+storage. OpenClaw 2026.7.2 and newer use the per-agent SQLite database at
+`~/.openclaw/agents/<agent>/agent/openclaw-agent.sqlite`; older versions use
+`~/.openclaw/agents/<agent>/sessions/<id>.jsonl`. This avoids hook payload
+races such as missing `sessionKey`, premature cleanup, and concurrent writes.
 
 ## Layout
 
@@ -17,7 +18,7 @@ harness/openclaw/
 └── README.md                      You are here
 
 src/sii_opik_plugin/openclaw/
-└── openclaw_opik_tracer.py        Python tracer (incremental JSONL parser
+└── openclaw_opik_tracer.py        Python tracer (incremental SQLite/JSONL parser
                                    → Opik traces / spans)
 ```
 
@@ -79,7 +80,7 @@ id, session id, transcript path) and spawns
 `src/sii_opik_plugin/openclaw/openclaw_opik_tracer.py` detached,
 piping the event JSON over stdin. The Python tracer:
 
-1. Reads the session JSONL transcript from `committed_offset` (resumable).
+1. Reads the active SQLite events or legacy JSONL transcript from a committed cursor (resumable).
 2. Parses turns / LLM calls / tool calls / sub-agents.
 3. Upserts a session-level trace + per-turn / per-tool / per-subagent spans
    to Opik.
@@ -87,9 +88,8 @@ piping the event JSON over stdin. The Python tracer:
    two-phase commit so a crash mid-flush doesn't double-emit or lose turns.
 
 Hooks subscribed: `session_start`, `session_end`, `before_reset`,
-`before_agent_start`, `before_agent_reply`, `llm_input`, `llm_output`,
-`before_tool_call`, `after_tool_call`, `before_compaction`,
-`after_compaction`, `agent_end`, `subagent_spawning`,
+`before_agent_reply`, `llm_input`, `llm_output`, `before_tool_call`,
+`after_tool_call`, `before_compaction`, `after_compaction`, `agent_end`,
 `subagent_delivery_target`, `subagent_spawned`, `subagent_ended`.
 
 ## Development
@@ -125,8 +125,8 @@ For TS changes, `npm run dev` runs `tsc --watch` against `harness/openclaw/`.
 
 - id: `openclaw-opik-tracer`
 - entry: `dist/index.js`
-- `pluginApi`: `>=2026.4.8`
-- `minGatewayVersion`: `2026.4.8`
+- `pluginApi`: `>=2026.8.1`
+- `minGatewayVersion`: `2026.8.1`
 
 If your OpenClaw is older than that, upgrade OpenClaw first or the
 plugin will refuse to load.

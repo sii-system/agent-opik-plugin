@@ -2,7 +2,7 @@
   "id": "openclaw-opik-tracer",
   "name": "openclaw-opik-tracer",
   "version": "0.1.0",
-  "description": "Trace openclaw sessions to Opik via incremental JSONL parsing. Uses hooks as triggers only — all data is read from session transcript files, avoiding event payload bugs.",
+  "description": "Trace OpenClaw sessions to Opik via incremental SQLite or legacy JSONL parsing. Hooks are triggers only; transcript storage remains the data source.",
   "main": "dist/index.js",
   "configSchema": {
     "type": "object",

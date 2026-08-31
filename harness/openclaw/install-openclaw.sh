@@ -84,8 +84,20 @@ cmd_build() {
 cmd_register() {
   require_openclaw
   [[ -f "$ROOT_DIR/dist/index.js" ]] || { echo "dist/ missing — run '$(basename "$0") build' first" >&2; exit 1; }
-  openclaw plugins install --link "$ROOT_DIR"
+  local install_help
+  install_help="$(openclaw plugins install --help 2>&1 || true)"
+  local install_args=(plugins install --link)
+  if [[ "$install_help" == *"--force"* ]]; then
+    install_args+=(--force)
+  fi
+  if [[ "$install_help" == *"--accept-capabilities"* ]]; then
+    install_args+=(--accept-capabilities)
+  fi
+  openclaw "${install_args[@]}" "$ROOT_DIR"
   openclaw config set "plugins.entries.$PLUGIN_ID.enabled" true
+  if [[ "$install_help" == *"--accept-capabilities"* ]]; then
+    openclaw config set "plugins.entries.$PLUGIN_ID.hooks.allowConversationAccess" true
+  fi
   echo "registered + enabled: $PLUGIN_ID"
   echo "Next: $(basename "$0") config   (set your Opik credentials)"
 }

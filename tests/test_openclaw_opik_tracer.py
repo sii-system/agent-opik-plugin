@@ -8,11 +8,60 @@ hook handlers and Opik client wrappers are intentionally out of scope
 
 from __future__ import annotations
 
+import json
 import os
+import sqlite3
 
 import pytest
 
 from sii_opik_plugin.openclaw import openclaw_opik_tracer as oot
+
+
+def _create_sqlite_transcript(
+    path, session_key: str, session_id: str, events: list[dict],
+    active_seqs: list[int] | None = None,
+) -> None:
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE session_nodes (
+          session_key TEXT PRIMARY KEY,
+          current_session_id TEXT NOT NULL
+        );
+        CREATE TABLE transcript_events (
+          session_id TEXT NOT NULL,
+          seq INTEGER NOT NULL,
+          event_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          PRIMARY KEY (session_id, seq)
+        );
+        CREATE TABLE session_transcript_active_events (
+          session_id TEXT NOT NULL,
+          active_position INTEGER NOT NULL,
+          event_seq INTEGER NOT NULL,
+          message_position INTEGER,
+          context_eligible INTEGER,
+          PRIMARY KEY (session_id, active_position)
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO session_nodes(session_key, current_session_id) VALUES (?, ?)",
+        (session_key, session_id),
+    )
+    for seq, event in enumerate(events):
+        conn.execute(
+            "INSERT INTO transcript_events VALUES (?, ?, ?, ?)",
+            (session_id, seq, json.dumps(event), seq),
+        )
+    selected = active_seqs if active_seqs is not None else list(range(len(events)))
+    for active_position, seq in enumerate(selected):
+        conn.execute(
+            "INSERT INTO session_transcript_active_events VALUES (?, ?, ?, ?, ?)",
+            (session_id, active_position, seq, active_position, 1),
+        )
+    conn.commit()
+    conn.close()
 
 
 # ── Env helpers ──────────────────────────────────────────────────────────────
@@ -105,6 +154,139 @@ class TestNormalizeSessionFile:
         missing = tmp_path / "does-not-exist.jsonl"
         normalized = oot._normalize_session_file(str(missing))
         assert normalized.endswith("does-not-exist.jsonl")
+
+
+class TestSQLiteTranscript:
+    def _events(self):
+        return [
+            {
+                "type": "session",
+                "version": 3,
+                "id": "session-1",
+                "timestamp": "2026-08-31T00:00:00Z",
+            },
+            {
+                "type": "message",
+                "id": "user-1",
+                "timestamp": "2026-08-31T00:00:01Z",
+                "message": {"role": "user", "content": "hello"},
+            },
+            {
+                "type": "message",
+                "id": "assistant-old",
+                "timestamp": "2026-08-31T00:00:02Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "superseded"}],
+                    "provider": "frontgate",
+                    "model": "deepseekv4-flash-0731",
+                    "usage": {"input": 2, "output": 1},
+                    "stopReason": "stop",
+                },
+            },
+            {
+                "type": "message",
+                "id": "assistant-new",
+                "timestamp": "2026-08-31T00:00:03Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "hello from sqlite"}],
+                    "provider": "frontgate",
+                    "model": "deepseekv4-flash-0731",
+                    "usage": {"input": 2, "output": 3},
+                    "stopReason": "stop",
+                },
+            },
+        ]
+
+    def test_reads_only_active_events(self, tmp_path):
+        database = tmp_path / "openclaw-agent.sqlite"
+        _create_sqlite_transcript(
+            database,
+            "agent:main:test",
+            "session-1",
+            self._events(),
+            active_seqs=[0, 1, 3],
+        )
+
+        turns, snapshot = oot.parse_transcript_segment(
+            database, 0, session_key="agent:main:test",
+        )
+
+        assert len(turns) == 1
+        assert turns[0].user_text == "hello"
+        assert turns[0].llm_calls[0].text == "hello from sqlite"
+        assert turns[0].llm_calls[0].model == "deepseekv4-flash-0731"
+        assert turns[0].end_offset == 4
+        assert snapshot["input_tokens"] == 2
+        assert oot.transcript_extent(database, "agent:main:test") == 4
+
+    def test_sequence_cursor_reads_only_new_events(self, tmp_path):
+        database = tmp_path / "openclaw-agent.sqlite"
+        _create_sqlite_transcript(
+            database,
+            "agent:main:test",
+            "session-1",
+            self._events(),
+            active_seqs=[0, 1, 3],
+        )
+        conn = sqlite3.connect(database)
+        extra = [
+            {
+                "type": "message",
+                "id": "user-2",
+                "timestamp": "2026-08-31T00:00:04Z",
+                "message": {"role": "user", "content": "second"},
+            },
+            {
+                "type": "message",
+                "id": "assistant-2",
+                "timestamp": "2026-08-31T00:00:05Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "second answer"}],
+                    "model": "deepseekv4-flash-0731",
+                    "usage": {"input": 4, "output": 5},
+                    "stopReason": "stop",
+                },
+            },
+        ]
+        for seq, event in enumerate(extra, start=4):
+            conn.execute(
+                "INSERT INTO transcript_events VALUES (?, ?, ?, ?)",
+                ("session-1", seq, json.dumps(event), seq),
+            )
+            conn.execute(
+                "INSERT INTO session_transcript_active_events VALUES (?, ?, ?, ?, ?)",
+                ("session-1", seq - 1, seq, seq - 1, 1),
+            )
+        conn.commit()
+        conn.close()
+
+        turns, _ = oot.parse_transcript_segment(
+            database, 4, session_key="agent:main:test", session_id="session-1",
+        )
+
+        assert len(turns) == 1
+        assert turns[0].user_text == "second"
+        assert turns[0].llm_calls[0].text == "second answer"
+        assert turns[0].end_offset == 2
+        assert oot.transcript_extent(
+            database, "agent:main:test", "session-1",
+        ) == 6
+
+    def test_event_path_falls_back_to_agent_database(self, tmp_path, monkeypatch):
+        database = tmp_path / "agents" / "main" / "agent" / "openclaw-agent.sqlite"
+        database.parent.mkdir(parents=True)
+        database.touch()
+        monkeypatch.setattr(oot, "_openclaw_state_root", lambda: tmp_path)
+        event = {
+            "sessionKey": "agent:main:test",
+            "sessionFile": str(tmp_path / "agents" / "main" / "sessions" / "missing.jsonl"),
+            "agentId": "main",
+        }
+
+        assert oot._event_transcript_path(event, "test") == database.resolve()
 
 
 # ── Timestamp / model helpers ────────────────────────────────────────────────
@@ -433,6 +615,19 @@ class TestResolveStateKey:
         }}
         assert oot.resolve_state_key(global_state, "session-k", str(f)) == "session-k"
 
+    def test_sqlite_sessions_get_distinct_state_keys(self, tmp_path):
+        database = tmp_path / "openclaw-agent.sqlite"
+        first = oot.resolve_state_key(
+            {"sessions": {}}, "agent:main:main", str(database), "session-1",
+        )
+        second = oot.resolve_state_key(
+            {"sessions": {}}, "agent:main:main", str(database), "session-2",
+        )
+
+        assert first != second
+        assert first.endswith(f"{oot.SQLITE_STATE_KEY_MARKER}session-1")
+        assert second.endswith(f"{oot.SQLITE_STATE_KEY_MARKER}session-2")
+
 
 # ── SessionState round-trips ─────────────────────────────────────────────────
 
@@ -463,6 +658,7 @@ class TestSessionStateRoundTrip:
             completed=False,
             session_file="/p/s.jsonl",
             session_key="sess-1",
+            session_id="physical-session-1",
             session_total_llm_calls=4,
             session_models=["claude-sonnet-4-5"],
             session_api_billed_input=1000,
@@ -476,6 +672,7 @@ class TestSessionStateRoundTrip:
         assert loaded.emitted_turns == 3
         assert loaded.trace_id == "t-1"
         assert loaded.session_models == ["claude-sonnet-4-5"]
+        assert loaded.session_id == "physical-session-1"
         assert loaded.session_api_billed_input == 1000
         assert loaded.pending_tool_calls == {"tool-1": 1700000000.0}
 
@@ -532,6 +729,7 @@ class TestSubagentStateRoundTrip:
             subagent_mode="run",
             expects_completion_msg=True,
             transcript_path="/p/child.jsonl",
+            session_id="child-session-1",
             turn_start_offset=128,
             emitted_turns=2,
             started_at="2024-01-01T00:00:00Z",
@@ -552,6 +750,7 @@ class TestSubagentStateRoundTrip:
         assert loaded.subagent_mode == "run"
         assert loaded.expects_completion_msg is True
         assert loaded.transcript_path == "/p/child.jsonl"
+        assert loaded.session_id == "child-session-1"
         assert loaded.turn_start_offset == 128
         assert loaded.emitted_turns == 2
         assert loaded.finished is True
