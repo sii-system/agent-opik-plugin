@@ -288,6 +288,24 @@ class TestSQLiteTranscript:
 
         assert oot._event_transcript_path(event, "test") == database.resolve()
 
+    def test_event_path_prefers_agent_database_over_existing_jsonl(
+        self, tmp_path, monkeypatch,
+    ):
+        legacy = tmp_path / "agents" / "main" / "sessions" / "session.jsonl"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"type":"message"}\n', encoding="utf-8")
+        database = tmp_path / "agents" / "main" / "agent" / "openclaw-agent.sqlite"
+        database.parent.mkdir(parents=True)
+        database.touch()
+        monkeypatch.setattr(oot, "_openclaw_state_root", lambda: tmp_path)
+        event = {
+            "sessionKey": "agent:main:test",
+            "sessionFile": str(legacy),
+            "agentId": "main",
+        }
+
+        assert oot._event_transcript_path(event, "test") == database.resolve()
+
 
 # ── Timestamp / model helpers ────────────────────────────────────────────────
 
@@ -627,6 +645,56 @@ class TestResolveStateKey:
         assert first != second
         assert first.endswith(f"{oot.SQLITE_STATE_KEY_MARKER}session-1")
         assert second.endswith(f"{oot.SQLITE_STATE_KEY_MARKER}session-2")
+
+    def test_concrete_id_does_not_reuse_completed_idless_sqlite_state(self, tmp_path):
+        database = tmp_path / "openclaw-agent.sqlite"
+        normalized = oot._normalize_session_file(str(database))
+        session_key = "agent:main:main"
+        old_key = oot._state_key_for_source(normalized, session_key)
+        global_state = {"sessions": {old_key: {
+            "session_key": session_key,
+            "session_file": normalized,
+            "session_id": "",
+            "completed": True,
+            "committed_offset": 42,
+            "trace_id": "old-trace",
+        }}}
+
+        state_key, session = oot._load_bound_session_state(
+            global_state, session_key, normalized, "physical-session-2",
+        )
+
+        assert state_key == (
+            f"{normalized}{oot.SQLITE_STATE_KEY_MARKER}physical-session-2"
+        )
+        assert session.session_id == "physical-session-2"
+        assert session.completed is False
+        assert session.committed_offset == 0
+        assert session.trace_id is None
+
+    def test_concrete_id_can_adopt_active_idless_sqlite_state(self, tmp_path):
+        database = tmp_path / "openclaw-agent.sqlite"
+        normalized = oot._normalize_session_file(str(database))
+        session_key = "agent:main:main"
+        old_key = oot._state_key_for_source(normalized, session_key)
+        global_state = {"sessions": {old_key: {
+            "session_key": session_key,
+            "session_file": normalized,
+            "session_id": "",
+            "completed": False,
+            "committed_offset": 7,
+            "trace_id": "active-trace",
+        }}}
+
+        state_key, session = oot._load_bound_session_state(
+            global_state, session_key, normalized, "physical-session-2",
+        )
+
+        assert state_key == old_key
+        assert session.session_id == "physical-session-2"
+        assert session.completed is False
+        assert session.committed_offset == 7
+        assert session.trace_id == "active-trace"
 
 
 # ── SessionState round-trips ─────────────────────────────────────────────────

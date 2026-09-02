@@ -348,6 +348,21 @@ def _find_state_key_by_session_key(
         raw_session_id = str(raw.get("session_id", ""))
         if session_id and raw_session_id and raw_session_id != session_id:
             continue
+        # A SQLite database is shared by physical sessions. Once the event
+        # provides an ID, an ID-less completed state cannot safely identify
+        # that session: reusing it would carry over its terminal flag, cursor,
+        # and trace ID.
+        if session_id and not raw_session_id and bool(raw.get("completed", False)):
+            raw_session_file = _normalize_session_file(
+                str(raw.get("session_file", ""))
+            )
+            state_source, _ = _split_state_key(state_key)
+            state_source = _normalize_session_file(state_source)
+            if any(
+                source and _is_sqlite_transcript(source)
+                for source in (raw_session_file, state_source)
+            ):
+                continue
         fallback_matches.append(state_key)
         if not bool(raw.get("completed", False)):
             active_matches.append(state_key)
@@ -2165,19 +2180,18 @@ def _agent_database_path(agent_id: str) -> Path | None:
 
 def _event_transcript_path(event: dict[str, Any], event_name: str) -> Path | None:
     session_file = _normalize_session_file(str(event.get("sessionFile", "")))
-    if session_file:
-        direct_path = Path(session_file)
-        if direct_path.exists():
-            return direct_path
+    direct_path = Path(session_file) if session_file else None
 
+    # Database-first OpenClaw can leave the old JSONL path on disk after an
+    # upgrade. Prefer the authoritative per-agent database even when that
+    # stale legacy file still exists.
     database_path = _agent_database_path(str(event.get("agentId", "")))
     if database_path and database_path.exists():
         return database_path.resolve(strict=False)
 
     # Some hook contexts expose only the legacy JSONL path. Derive the
     # per-agent database from .../agents/<id>/sessions/<session>.jsonl.
-    if session_file:
-        direct_path = Path(session_file)
+    if direct_path:
         if direct_path.parent.name == "sessions":
             derived_database = direct_path.parent.parent / "agent" / "openclaw-agent.sqlite"
             if derived_database.exists():
