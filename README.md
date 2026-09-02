@@ -43,3 +43,35 @@ Each harness can also be driven directly via its own
 `harness/<name>/install-<name>.sh` (e.g. `install-claude.sh`,
 `install-opencode.sh`, `install-openclaw.sh`); see each harness directory's
 `README.md` for harness-specific details.
+
+## Export traces
+
+`export/export_opik_traces.py` pulls traces back **out** of an Opik project (the
+inverse of the realtime tracer) and writes one JSON file per trace, shaped as a
+flat span list `[root_trace, span1, span2, …]` — the format the downstream
+converters (`opik_trace_to_codetracer.py`,
+`convert_trace_to_session_parquet.py`) read.
+
+```
+python export/export_opik_traces.py \
+  --out-dir ./out \
+  [--project NAME] [--opik-url URL] [--workspace NAME] [--api-key KEY] \
+  [--filter 'tags contains "tb-task"'] \
+  [--max-results 1000] [--max-spans 5000] [--overwrite]
+```
+
+Target resolution (the script reads these itself and passes them to the client,
+since the SDK only honors `OPIK_URL_OVERRIDE`, not plain `OPIK_URL`):
+
+- **URL**: `--opik-url` → `$OPIK_URL` → error
+- **project**: `--project` → `$OPIK_PROJECT_NAME` → error
+- **workspace / api-key**: optional; fall back to `~/.opik.config` defaults.
+
+The resolved `url / workspace / project` is logged before fetching. Output is
+`<out-dir>/<trace_id>.json` per trace plus `<out-dir>/manifest.json` (header +
+per-trace index). Existing files are skipped unless `--overwrite`.
+
+Note: the exported JSON is the verbatim trace/span content. The SFT converter
+consumes the `llm` spans directly; the CodeTracer converter expects tool calls
+embedded as `tool_call` blocks in assistant messages, so traces that record tool
+calls as separate `tool` spans need a flattening pass first.
