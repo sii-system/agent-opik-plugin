@@ -3,11 +3,11 @@
  *
  * Registers openclaw hooks as triggers only — no data is read from hook payloads.
  * Each hook extracts session context metadata and spawns a Python subprocess
- * that incrementally parses the session JSONL file and emits Opik spans.
+ * that incrementally parses the session SQLite/JSONL transcript and emits Opik spans.
  */
 
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { emptyPluginConfigSchema } from "openclaw/plugin-sdk/plugin-entry";
 import { initBridge, firePythonTracer, defaultScriptPath, type BridgeEvent } from "./src/bridge.js";
 
 type SubagentRequesterOrigin = NonNullable<NonNullable<BridgeEvent["subagentDelivery"]>["requesterOrigin"]>;
@@ -168,24 +168,6 @@ function buildSessionStartBridgeEvent(
   return bridgeEvent;
 }
 
-function buildSubagentSpawningBridgeEvent(
-  agentCtx: Record<string, unknown>,
-  event: Record<string, unknown>,
-  config: PluginConfig,
-): BridgeEvent | null {
-  const parentSessionKey =
-    typeof agentCtx.requesterSessionKey === "string" && agentCtx.requesterSessionKey.length > 0
-      ? agentCtx.requesterSessionKey
-      : undefined;
-  if (!parentSessionKey) return null;
-  const bridgeEvent = buildLightEvent("subagent_spawning", agentCtx, config, parentSessionKey);
-  bridgeEvent.childSessionKey = typeof event.childSessionKey === "string" ? event.childSessionKey : undefined;
-  bridgeEvent.childAgentId = typeof event.agentId === "string" ? event.agentId : undefined;
-  bridgeEvent.subagentLabel = typeof event.label === "string" ? event.label : undefined;
-  bridgeEvent.subagentMode = event.mode === "run" || event.mode === "session" ? event.mode : undefined;
-  return bridgeEvent;
-}
-
 function buildSubagentDeliveryBridgeEvent(
   agentCtx: Record<string, unknown>,
   event: Record<string, unknown>,
@@ -216,8 +198,8 @@ function buildSubagentDeliveryBridgeEvent(
 
 const plugin = {
   id: "openclaw-opik-tracer",
-  name: "Opik Tracer (JSONL)",
-  description: "Trace openclaw sessions to Opik via incremental JSONL parsing",
+  name: "Opik Tracer",
+  description: "Trace OpenClaw sessions to Opik via incremental SQLite/JSONL parsing",
   configSchema: emptyPluginConfigSchema(),
 
   register(api: OpenClawPluginApi) {
@@ -262,7 +244,7 @@ const plugin = {
     });
 
     // ---------------------------------------------------------------
-    // Hook: llm_output — trigger incremental JSONL parse & emit
+    // Hook: llm_output — trigger incremental transcript parse & emit
     // ---------------------------------------------------------------
     api.on("llm_output", (event, agentCtx) => {
       const ctx = agentCtx as Record<string, unknown>;
@@ -333,29 +315,6 @@ const plugin = {
       const bridgeEvent = buildSessionStartBridgeEvent(ctx, event as Record<string, unknown>, config);
       if (!bridgeEvent) return;
       firePythonTracer(bridgeEvent);
-    });
-
-    // ---------------------------------------------------------------
-    // Hook: before_agent_start — legacy control-plane hook, observe only.
-    // Must always return undefined so the tracer never mutates runtime behavior.
-    // ---------------------------------------------------------------
-    api.on("before_agent_start", (event, agentCtx) => {
-      try {
-        const ctx = agentCtx as Record<string, unknown>;
-        const bridgeEvent = buildBaseEvent("before_agent_start", ctx, config);
-        if (bridgeEvent) {
-          bridgeEvent.model = typeof (event as { modelOverride?: unknown }).modelOverride === "string"
-            ? (event as { modelOverride?: string }).modelOverride
-            : undefined;
-          bridgeEvent.provider = typeof (event as { providerOverride?: unknown }).providerOverride === "string"
-            ? (event as { providerOverride?: string }).providerOverride
-            : undefined;
-          firePythonTracer(bridgeEvent);
-        }
-      } catch (error) {
-        warn(`opik-tracer: before_agent_start hook failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return undefined;
     });
 
     // ---------------------------------------------------------------
@@ -433,25 +392,6 @@ const plugin = {
         (bridgeEvent as any).childAgentId = eventObj.agentId;
       }
       firePythonTracer(bridgeEvent);
-    });
-
-    // ---------------------------------------------------------------
-    // Hook: subagent_spawning — control-plane hook, observe only.
-    // Must always return undefined so the tracer never affects spawn outcomes.
-    // ---------------------------------------------------------------
-    api.on("subagent_spawning", (event, agentCtx) => {
-      try {
-        const ctx = agentCtx as Record<string, unknown>;
-        const bridgeEvent = buildSubagentSpawningBridgeEvent(ctx, event as Record<string, unknown>, config);
-        if (!bridgeEvent) {
-          warn("opik-tracer: subagent_spawning skipped because requesterSessionKey is missing");
-          return undefined;
-        }
-        firePythonTracer(bridgeEvent);
-      } catch (error) {
-        warn(`opik-tracer: subagent_spawning hook failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-      return undefined;
     });
 
     // ---------------------------------------------------------------

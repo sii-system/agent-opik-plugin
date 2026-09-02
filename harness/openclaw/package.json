@@ -8,12 +8,12 @@
       "./dist/index.js"
     ],
     "compat": {
-      "pluginApi": ">=2026.4.8",
-      "minGatewayVersion": "2026.4.8"
+      "pluginApi": ">=2026.8.1",
+      "minGatewayVersion": "2026.8.1"
     },
     "build": {
-      "openclawVersion": "2026.4.8",
-      "pluginSdkVersion": "2026.4.8"
+      "openclawVersion": "2026.8.1",
+      "pluginSdkVersion": "2026.8.1"
     }
   },
   "scripts": {
@@ -21,6 +21,7 @@
     "dev": "tsc --watch"
   },
   "devDependencies": {
+    "openclaw": "2026.8.1",
     "typescript": "^5.4.0"
   },
   "peerDependencies": {

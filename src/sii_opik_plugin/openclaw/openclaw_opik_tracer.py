@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 Shanghai Innovation Institute
 """
-openclaw -> Opik tracer via incremental JSONL parsing.
+openclaw -> Opik tracer via incremental transcript parsing.
 
 This script is spawned by the TS plugin shell on each hook event.
-It reads the hook event from stdin, incrementally parses the openclaw
-session JSONL file, and emits Opik spans.
+It reads the hook event from stdin, incrementally parses the OpenClaw
+session transcript, and emits Opik spans. OpenClaw versions before the
+database-first migration use JSONL files; newer versions store active
+transcript events in a per-agent SQLite database.
 
 Unlike opik-openclaw which relies on hook event payloads (and suffers from
 missing sessionKey, concurrent overwrites, and premature cleanup), this
-tracer reads the authoritative JSONL transcript directly.
+tracer reads the authoritative transcript directly.
 
 Events handled:
   session_start / session_end / before_reset
@@ -26,6 +28,7 @@ import json
 import os
 import re
 import signal
+import sqlite3
 import sys
 import time
 import uuid
@@ -95,6 +98,7 @@ PROCESS_TIMEOUT_S = int(os.environ.get("OC_OPIK_PROCESS_TIMEOUT_S", "15"))
 PINCHBENCH_TASK_ID = (os.environ.get("PINCHBENCH_TASK_ID") or "").strip()
 PINCHBENCH_RUN_ID = (os.environ.get("PINCHBENCH_RUN_ID") or "").strip()
 ORPHAN_SESSION_GC_AGE_S = 3600
+SQLITE_STATE_KEY_MARKER = "::openclaw-session::"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -211,6 +215,9 @@ class SessionState:
     session_file: str = ""
     # Logical session/thread identity used for Opik thread_id grouping.
     session_key: str = ""
+    # Physical OpenClaw session identity. Unlike session_key, this changes
+    # when a stable thread is reset and selects rows in SQLite transcripts.
+    session_id: str = ""
     # Session-wide accumulators (committed values only — safe for metadata)
     session_total_llm_calls: int = 0
     session_total_tool_calls: int = 0
@@ -259,6 +266,7 @@ class SubagentState:
     spawn_mode: str = ""
     expects_completion_msg: bool = False
     transcript_path: str = ""
+    session_id: str = ""
     turn_start_offset: int = 0
     emitted_turns: int = 0
     prev_usage_snapshot: dict[str, int] | None = None
@@ -296,16 +304,39 @@ def _looks_like_session_file(value: str) -> bool:
     return value.endswith(".jsonl") or "/" in value or "\\" in value
 
 
+def _is_sqlite_transcript(value: str | Path) -> bool:
+    return Path(str(value)).suffix.lower() in {".sqlite", ".sqlite3"}
+
+
+def _split_state_key(value: str) -> tuple[str, str]:
+    if SQLITE_STATE_KEY_MARKER not in value:
+        return value, ""
+    source, identity = value.split(SQLITE_STATE_KEY_MARKER, 1)
+    return source, identity
+
+
 def _normalize_session_file(value: str) -> str:
     if not value:
         return ""
+    value, _ = _split_state_key(value)
     try:
         return str(Path(value).expanduser().resolve(strict=False))
     except Exception:
         return str(Path(value).expanduser())
 
 
-def _find_state_key_by_session_key(global_state: dict[str, Any], session_key: str) -> str:
+def _state_key_for_source(session_file: str, session_key: str, session_id: str = "") -> str:
+    normalized_file = _normalize_session_file(session_file)
+    if normalized_file and _is_sqlite_transcript(normalized_file):
+        identity = session_id or session_key
+        if identity:
+            return f"{normalized_file}{SQLITE_STATE_KEY_MARKER}{identity}"
+    return normalized_file or session_key
+
+
+def _find_state_key_by_session_key(
+    global_state: dict[str, Any], session_key: str, session_id: str = "",
+) -> str:
     if not session_key:
         return ""
     sessions = global_state.get("sessions", {})
@@ -314,6 +345,24 @@ def _find_state_key_by_session_key(global_state: dict[str, Any], session_key: st
     for state_key, raw in sessions.items():
         if str(raw.get("session_key", "")) != session_key:
             continue
+        raw_session_id = str(raw.get("session_id", ""))
+        if session_id and raw_session_id and raw_session_id != session_id:
+            continue
+        # A SQLite database is shared by physical sessions. Once the event
+        # provides an ID, an ID-less completed state cannot safely identify
+        # that session: reusing it would carry over its terminal flag, cursor,
+        # and trace ID.
+        if session_id and not raw_session_id and bool(raw.get("completed", False)):
+            raw_session_file = _normalize_session_file(
+                str(raw.get("session_file", ""))
+            )
+            state_source, _ = _split_state_key(state_key)
+            state_source = _normalize_session_file(state_source)
+            if any(
+                source and _is_sqlite_transcript(source)
+                for source in (raw_session_file, state_source)
+            ):
+                continue
         fallback_matches.append(state_key)
         if not bool(raw.get("completed", False)):
             active_matches.append(state_key)
@@ -324,12 +373,17 @@ def _find_state_key_by_session_key(global_state: dict[str, Any], session_key: st
     return ""
 
 
-def resolve_state_key(global_state: dict[str, Any], session_key: str, session_file: str) -> str:
+def resolve_state_key(
+    global_state: dict[str, Any], session_key: str, session_file: str, session_id: str = "",
+) -> str:
     normalized_file = _normalize_session_file(session_file)
     sessions = global_state.get("sessions", {})
-    if normalized_file and normalized_file in sessions:
+    source_key = _state_key_for_source(normalized_file, session_key, session_id)
+    if source_key and source_key in sessions:
+        return source_key
+    if normalized_file and not _is_sqlite_transcript(normalized_file) and normalized_file in sessions:
         return normalized_file
-    existing = _find_state_key_by_session_key(global_state, session_key)
+    existing = _find_state_key_by_session_key(global_state, session_key, session_id)
     if existing:
         raw = sessions.get(existing, {})
         existing_file = _normalize_session_file(str(raw.get("session_file", "")))
@@ -340,8 +394,8 @@ def resolve_state_key(global_state: dict[str, Any], session_key: str, session_fi
             return existing
         if not existing_completed and not existing_file:
             return existing
-    if normalized_file:
-        return normalized_file
+    if source_key:
+        return source_key
     return session_key or ""
 
 
@@ -351,7 +405,9 @@ def _save_bound_session_state(
     normalized_file = _normalize_session_file(session.session_file)
     # Once the transcript path is known, persist under the file key so later
     # consumers can match the exact session_file deterministically.
-    target_key = normalized_file or state_key
+    target_key = _state_key_for_source(
+        normalized_file, session.session_key, session.session_id,
+    ) or state_key
     if normalized_file:
         sessions = global_state.get("sessions", {})
         stale_keys: list[str] = []
@@ -361,7 +417,16 @@ def _save_bound_session_state(
             if str(raw.get("session_key", "")) != session.session_key:
                 continue
             existing_file = _normalize_session_file(str(raw.get("session_file", "")))
-            if not existing_file:
+            existing_session_id = str(raw.get("session_id", ""))
+            same_identity = (
+                not session.session_id
+                or not existing_session_id
+                or existing_session_id == session.session_id
+            )
+            if same_identity and (
+                not existing_file
+                or (_is_sqlite_transcript(normalized_file) and existing_file == normalized_file)
+            ):
                 stale_keys.append(existing_key)
         for existing_key in stale_keys:
             sessions.pop(existing_key, None)
@@ -370,11 +435,13 @@ def _save_bound_session_state(
 
 
 def _load_bound_session_state(
-    global_state: dict[str, Any], session_key: str, session_file: str = ""
+    global_state: dict[str, Any], session_key: str, session_file: str = "",
+    session_id: str = "",
 ) -> tuple[str, SessionState]:
-    state_key = resolve_state_key(global_state, session_key, session_file)
+    state_key = resolve_state_key(global_state, session_key, session_file, session_id)
     session = load_session_state(global_state, state_key)
     session.session_key = session_key or session.session_key
+    session.session_id = session_id or session.session_id
     normalized_file = _normalize_session_file(session_file)
     if normalized_file:
         session.session_file = normalized_file
@@ -408,15 +475,20 @@ def _update_child_subagent_from_event(global_state: dict[str, Any], event: dict[
     transcript_path = _normalize_session_file(str(event.get("sessionFile", "")))
     if transcript_path:
         sub.transcript_path = transcript_path
+    if event.get("sessionId"):
+        sub.session_id = str(event.get("sessionId"))
     if not sub.started_at:
         sub.started_at = _event_time(event).isoformat()
     save_subagent_state(global_state, event["sessionKey"], sub)
 
 
 def _resolve_parent_trace_id(
-    global_state: dict[str, Any], session_key: str, session_file: str = ""
+    global_state: dict[str, Any], session_key: str, session_file: str = "",
+    session_id: str = "",
 ) -> tuple[str, str, SessionState] | tuple[None, None, None]:
-    state_key, session = _load_bound_session_state(global_state, session_key, session_file)
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, session_file, session_id,
+    )
     if not state_key:
         return None, None, None
     if not session.trace_start_ts:
@@ -480,6 +552,7 @@ def load_session_state(global_state: dict[str, Any], key: str) -> SessionState:
         completed=bool(raw.get("completed", False)),
         session_file=_normalize_session_file(str(raw.get("session_file", key if _looks_like_session_file(str(key)) else ""))),
         session_key=str(raw.get("session_key", key if not _looks_like_session_file(str(key)) else "")),
+        session_id=str(raw.get("session_id", "")),
         session_total_llm_calls=int(raw.get("session_total_llm_calls", 0)),
         session_total_tool_calls=int(raw.get("session_total_tool_calls", 0)),
         session_total_subagent_calls=int(raw.get("session_total_subagent_calls", 0)),
@@ -529,6 +602,7 @@ def save_session_state(global_state: dict[str, Any], key: str, session: SessionS
         "completed": session.completed,
         "session_file": session.session_file,
         "session_key": session.session_key,
+        "session_id": session.session_id,
         "session_total_llm_calls": session.session_total_llm_calls,
         "session_total_tool_calls": session.session_total_tool_calls,
         "session_total_subagent_calls": session.session_total_subagent_calls,
@@ -575,6 +649,7 @@ def load_subagent_state(global_state: dict[str, Any], child_key: str) -> Subagen
         spawn_mode=str(raw.get("spawn_mode", "")),
         expects_completion_msg=bool(raw.get("expects_completion_msg", False)),
         transcript_path=str(raw.get("transcript_path", "")),
+        session_id=str(raw.get("session_id", "")),
         turn_start_offset=int(raw.get("turn_start_offset", 0)),
         emitted_turns=int(raw.get("emitted_turns", 0)),
         prev_usage_snapshot=raw.get("prev_usage_snapshot"),
@@ -602,6 +677,7 @@ def save_subagent_state(global_state: dict[str, Any], child_key: str, sub: Subag
         "spawn_mode": sub.spawn_mode,
         "expects_completion_msg": sub.expects_completion_msg,
         "transcript_path": sub.transcript_path,
+        "session_id": sub.session_id,
         "turn_start_offset": sub.turn_start_offset,
         "emitted_turns": sub.emitted_turns,
         "prev_usage_snapshot": sub.prev_usage_snapshot,
@@ -1059,22 +1135,136 @@ def _patch_llm_call_bounds(turns: list[V3Turn], lines: list[str]) -> None:
             lc.timestamp = first_ts
 
 
+def _open_sqlite_transcript(transcript_path: Path) -> sqlite3.Connection:
+    uri = f"{transcript_path.expanduser().resolve(strict=False).as_uri()}?mode=ro"
+    return sqlite3.connect(uri, uri=True, timeout=2.0)
+
+
+def _sqlite_has_table(conn: sqlite3.Connection, table_name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _resolve_sqlite_session_id(
+    conn: sqlite3.Connection, session_key: str, session_id: str = "",
+) -> str:
+    if session_id:
+        return session_id
+    if session_key and _sqlite_has_table(conn, "session_nodes"):
+        row = conn.execute(
+            "SELECT current_session_id FROM session_nodes WHERE session_key = ? LIMIT 1",
+            (session_key,),
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0])
+    if session_key and _sqlite_has_table(conn, "transcript_events"):
+        row = conn.execute(
+            "SELECT session_id FROM transcript_events WHERE session_id = ? LIMIT 1",
+            (session_key,),
+        ).fetchone()
+        if row and row[0]:
+            return str(row[0])
+    return ""
+
+
+def _sqlite_event_extent(
+    transcript_path: Path, session_key: str, session_id: str = "",
+) -> int:
+    with _open_sqlite_transcript(transcript_path) as conn:
+        resolved_session_id = _resolve_sqlite_session_id(conn, session_key, session_id)
+        if not resolved_session_id:
+            return 0
+        if _sqlite_has_table(conn, "session_transcript_active_events"):
+            row = conn.execute(
+                "SELECT MAX(event_seq) FROM session_transcript_active_events WHERE session_id = ?",
+                (resolved_session_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT MAX(seq) FROM transcript_events WHERE session_id = ?",
+                (resolved_session_id,),
+            ).fetchone()
+        return int(row[0]) + 1 if row and row[0] is not None else 0
+
+
+def _read_sqlite_transcript_lines(
+    transcript_path: Path,
+    cursor_offset: int,
+    session_key: str,
+    session_id: str = "",
+) -> list[tuple[str, int]]:
+    with _open_sqlite_transcript(transcript_path) as conn:
+        resolved_session_id = _resolve_sqlite_session_id(conn, session_key, session_id)
+        if not resolved_session_id:
+            return []
+        if _sqlite_has_table(conn, "session_transcript_active_events"):
+            rows = conn.execute(
+                """
+                SELECT events.seq, events.event_json
+                FROM session_transcript_active_events AS active
+                JOIN transcript_events AS events
+                  ON events.session_id = active.session_id
+                 AND events.seq = active.event_seq
+                WHERE active.session_id = ? AND events.seq >= ?
+                ORDER BY active.active_position
+                """,
+                (resolved_session_id, cursor_offset),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT seq, event_json
+                FROM transcript_events
+                WHERE session_id = ? AND seq >= ?
+                ORDER BY seq
+                """,
+                (resolved_session_id, cursor_offset),
+            ).fetchall()
+    return [
+        (str(event_json), max(0, int(seq) + 1 - cursor_offset))
+        for seq, event_json in rows
+    ]
+
+
+def transcript_extent(
+    transcript_path: Path, session_key: str = "", session_id: str = "",
+) -> int:
+    """Return the source cursor immediately after the newest transcript event."""
+    try:
+        if _is_sqlite_transcript(transcript_path):
+            return _sqlite_event_extent(transcript_path, session_key, session_id)
+        return transcript_path.stat().st_size
+    except Exception as exc:
+        debug(f"transcript_extent failed: {exc}")
+        return 0
+
+
 def parse_transcript_segment(
     transcript_path: Path,
-    byte_offset: int,
+    cursor_offset: int,
     prev_usage_snapshot: dict[str, int] | None = None,
+    session_key: str = "",
+    session_id: str = "",
 ) -> tuple[list[V3Turn], dict[str, int]]:
-    """Read transcript from byte_offset and parse into V3Turn objects."""
+    """Read a transcript from a byte/sequence cursor and parse V3Turn objects."""
     try:
-        with transcript_path.open("rb") as f:
-            f.seek(byte_offset)
-            raw_bytes = f.read()
-        raw_lines = raw_bytes.splitlines(keepends=True)
-        lines: list[tuple[str, int]] = []
-        rel_offset = 0
-        for raw_line in raw_lines:
-            rel_offset += len(raw_line)
-            lines.append((raw_line.decode("utf-8", errors="replace"), rel_offset))
+        if _is_sqlite_transcript(transcript_path):
+            lines = _read_sqlite_transcript_lines(
+                transcript_path, cursor_offset, session_key, session_id,
+            )
+        else:
+            with transcript_path.open("rb") as f:
+                f.seek(cursor_offset)
+                raw_bytes = f.read()
+            raw_lines = raw_bytes.splitlines(keepends=True)
+            lines = []
+            rel_offset = 0
+            for raw_line in raw_lines:
+                rel_offset += len(raw_line)
+                lines.append((raw_line.decode("utf-8", errors="replace"), rel_offset))
         turns = _parse_jsonl_turns(lines)
         text_lines = [line for line, _ in lines]
         _patch_llm_call_bounds(turns, text_lines)
@@ -1325,6 +1515,11 @@ def _session_metadata(session: SessionState, session_key: str) -> dict[str, Any]
     }
     if session.session_file:
         meta["session_file"] = session.session_file
+        meta["transcript_format"] = (
+            "sqlite" if _is_sqlite_transcript(session.session_file) else "jsonl"
+        )
+    if session.session_id:
+        meta["session_id"] = session.session_id
     if session.resumed_from:
         meta["resumed_from"] = session.resumed_from
     if session.ended_reason:
@@ -1668,8 +1863,10 @@ def flush_turns(
     if not transcript_path.exists():
         return 0
 
-    file_size = transcript_path.stat().st_size
-    if file_size <= session.committed_offset:
+    source_extent = transcript_extent(
+        transcript_path, session_key, session.session_id,
+    )
+    if source_extent <= session.committed_offset:
         return 0
 
     # Always mark session as active when flush_turns is called,
@@ -1680,6 +1877,7 @@ def flush_turns(
 
     turns, _ = parse_transcript_segment(
         transcript_path, session.committed_offset, session.committed_usage_snapshot,
+        session_key=session_key, session_id=session.session_id,
     )
     if not turns:
         return 0
@@ -1885,8 +2083,10 @@ def recover_incomplete_sessions(client: Any, project_name: str) -> None:
                         gc_sessions.add(state_key)
                     continue
 
-                file_size = transcript_path.stat().st_size
-                if file_size <= session.committed_offset:
+                source_extent = transcript_extent(
+                    transcript_path, thread_key, session.session_id,
+                )
+                if source_extent <= session.committed_offset:
                     continue
 
                 # Track continuous staleness.  Reset if the session was
@@ -1899,7 +2099,7 @@ def recover_incomplete_sessions(client: Any, project_name: str) -> None:
 
                 info(
                     f"recovery: replaying session={thread_key} "
-                    f"committed={session.committed_offset} file_size={file_size} "
+                    f"committed={session.committed_offset} source_extent={source_extent} "
                     f"allow_partial={allow_partial}"
                 )
                 emitted = flush_turns(
@@ -1956,19 +2156,50 @@ def _gc_subagent_state(
         parent_file = _normalize_session_file(str(raw.get("parent_session_file", "")))
         if (
             (removed_parent_key and parent_key == removed_parent_key)
-            or (removed_parent_file and parent_file == removed_parent_file)
+            or (
+                removed_parent_file
+                and not _is_sqlite_transcript(removed_parent_file)
+                and parent_file == removed_parent_file
+            )
         ):
             del subagents[child_key]
             removed += 1
     return removed
 
 
+def _openclaw_state_root() -> Path:
+    configured = os.environ.get("OPENCLAW_STATE_DIR")
+    return Path(configured).expanduser() if configured else Path.home() / ".openclaw"
+
+
+def _agent_database_path(agent_id: str) -> Path | None:
+    if not agent_id:
+        return None
+    return _openclaw_state_root() / "agents" / agent_id / "agent" / "openclaw-agent.sqlite"
+
+
 def _event_transcript_path(event: dict[str, Any], event_name: str) -> Path | None:
     session_file = _normalize_session_file(str(event.get("sessionFile", "")))
-    if not session_file:
-        debug(f"{event_name}: missing sessionFile for session={event.get('sessionKey', '')}")
-        return None
-    return Path(session_file)
+    direct_path = Path(session_file) if session_file else None
+
+    # Database-first OpenClaw can leave the old JSONL path on disk after an
+    # upgrade. Prefer the authoritative per-agent database even when that
+    # stale legacy file still exists.
+    database_path = _agent_database_path(str(event.get("agentId", "")))
+    if database_path and database_path.exists():
+        return database_path.resolve(strict=False)
+
+    # Some hook contexts expose only the legacy JSONL path. Derive the
+    # per-agent database from .../agents/<id>/sessions/<session>.jsonl.
+    if direct_path:
+        if direct_path.parent.name == "sessions":
+            derived_database = direct_path.parent.parent / "agent" / "openclaw-agent.sqlite"
+            if derived_database.exists():
+                return derived_database.resolve(strict=False)
+        return direct_path
+
+    debug(f"{event_name}: missing transcript source for session={event.get('sessionKey', '')}")
+    return None
 
 
 # ── Event handlers ────────────────────────────────────────────────────────────
@@ -1981,7 +2212,10 @@ def handle_session_start(event: dict[str, Any], client: Any, project_name: str,
         debug(f"session_start: child session={session_key} tracked under parent")
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     if not session.trace_start_ts:
         session.trace_start_ts = datetime.now(timezone.utc).isoformat()
     if event.get("resumedFrom"):
@@ -2000,7 +2234,10 @@ def handle_llm_input(event: dict[str, Any], client: Any, project_name: str,
         debug(f"llm_input: child session={session_key}")
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
 
     model = event.get("model", "")
     channel = event.get("channelId", "")
@@ -2024,7 +2261,10 @@ def handle_before_agent_start(event: dict[str, Any], client: Any, project_name: 
         _update_child_subagent_from_event(global_state, event)
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     if not session.trace_start_ts:
         session.trace_start_ts = datetime.now(timezone.utc).isoformat()
     trace_id = ensure_session_trace(client, project_name, session_key, session)
@@ -2058,7 +2298,9 @@ def handle_llm_output(event: dict[str, Any], client: Any, project_name: str,
     transcript_path = _event_transcript_path(event, "llm_output")
     if transcript_path is None:
         return
-    state_key, session = _load_bound_session_state(global_state, session_key, str(transcript_path))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(transcript_path), str(event.get("sessionId", "")),
+    )
 
     emitted = flush_turns(client, project_name, session, session_key, transcript_path)
     if emitted > 0:
@@ -2077,7 +2319,10 @@ def handle_before_tool_call(event: dict[str, Any], client: Any, project_name: st
     tool_call_id = event.get("toolCallId")
     if not tool_call_id:
         return
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     start_time = _event_time(event)
     session.pending_tool_calls[str(tool_call_id)] = start_time.timestamp()
     # No lifecycle span — emit_turn builds the tool span with correct nesting
@@ -2098,7 +2343,9 @@ def handle_after_tool_call(event: dict[str, Any], client: Any, project_name: str
     transcript_path = _event_transcript_path(event, "after_tool_call")
     if transcript_path is None:
         return
-    state_key, session = _load_bound_session_state(global_state, session_key, str(transcript_path))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(transcript_path), str(event.get("sessionId", "")),
+    )
     tool_call_id = str(event.get("toolCallId") or "")
     if tool_call_id:
         session.pending_tool_calls.pop(tool_call_id, None)
@@ -2116,7 +2363,10 @@ def handle_before_compaction(event: dict[str, Any], client: Any, project_name: s
         _update_child_subagent_from_event(global_state, event)
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     trace_id = ensure_session_trace(client, project_name, session_key, session)
     started_at = _event_time(event)
     session.compaction_span_id = _deterministic_span_id(trace_id, "compaction", str(session.compactions_count))
@@ -2144,7 +2394,10 @@ def handle_after_compaction(event: dict[str, Any], client: Any, project_name: st
         _update_child_subagent_from_event(global_state, event)
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     trace_id = ensure_session_trace(client, project_name, session_key, session)
     end_time = _event_time(event)
     span_id = session.compaction_span_id or _deterministic_span_id(trace_id, "compaction", str(session.compactions_count))
@@ -2182,7 +2435,10 @@ def handle_before_reset(event: dict[str, Any], client: Any, project_name: str,
         return
 
     transcript_path = _event_transcript_path(event, "before_reset")
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     session.ended_reason = str(event.get("resetReason") or "reset")
     if transcript_path and transcript_path.exists():
         flush_turns(client, project_name, session, session_key, transcript_path, allow_partial=True)
@@ -2207,7 +2463,9 @@ def handle_agent_end(event: dict[str, Any], client: Any, project_name: str,
     transcript_path = _event_transcript_path(event, "agent_end")
     if transcript_path is None:
         return
-    state_key, session = _load_bound_session_state(global_state, session_key, str(transcript_path))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(transcript_path), str(event.get("sessionId", "")),
+    )
 
     # Final flush with partial turns allowed
     emitted = flush_turns(
@@ -2235,7 +2493,10 @@ def handle_session_end(event: dict[str, Any], client: Any, project_name: str,
             save_subagent_state(global_state, session_key, sub)
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     reason = str(event.get("sessionEndReason") or "unknown")
     session.session_end_info = {
         "reason": reason,
@@ -2265,7 +2526,8 @@ def handle_subagent_spawning(event: dict[str, Any], client: Any, project_name: s
         return
 
     parent_state_key, parent_trace_id, parent_session = _resolve_parent_trace_id(
-        global_state, session_key, str(event.get("sessionFile", ""))
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
     )
     if not parent_trace_id or not parent_session:
         return
@@ -2318,7 +2580,10 @@ def handle_subagent_delivery_target(event: dict[str, Any], client: Any, project_
     if not child_key:
         return
 
-    state_key, session = _load_bound_session_state(global_state, session_key, str(event.get("sessionFile", "")))
+    state_key, session = _load_bound_session_state(
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
+    )
     delivery = dict(event.get("subagentDelivery") or {})
     session.subagent_delivery[child_key] = delivery
     sub = load_subagent_state(global_state, child_key) or SubagentState(agent_id="")
@@ -2342,7 +2607,8 @@ def handle_subagent_spawned(event: dict[str, Any], client: Any, project_name: st
     session_key = event["sessionKey"]
     child_agent_id = str(event.get("childAgentId", ""))
     parent_state_key, parent_trace_id, parent_session = _resolve_parent_trace_id(
-        global_state, session_key, str(event.get("sessionFile", ""))
+        global_state, session_key, str(event.get("sessionFile", "")),
+        str(event.get("sessionId", "")),
     )
     if not parent_trace_id or not parent_session:
         return
@@ -2398,7 +2664,8 @@ def handle_subagent_ended(event: dict[str, Any], client: Any, project_name: str,
         sub.parent_session_file = _normalize_session_file(str(event.get("sessionFile", "")))
 
     parent_state_key, parent_trace_id, parent_session = _resolve_parent_trace_id(
-        global_state, sub.parent_session_key, sub.parent_session_file
+        global_state, sub.parent_session_key, sub.parent_session_file,
+        str(event.get("sessionId", "")),
     )
     if not parent_trace_id or not parent_session:
         sub.finished = True
@@ -2422,7 +2689,14 @@ def handle_subagent_ended(event: dict[str, Any], client: Any, project_name: str,
     else:
         # Construct path from parent session file
         parent_file = _event_transcript_path(event, "subagent_ended")
-        if parent_file and parent_file.exists():
+        if parent_file and _is_sqlite_transcript(parent_file):
+            child_database = _agent_database_path(sub.agent_id)
+            if child_database and child_database.exists():
+                transcript_path = child_database
+                sub.transcript_path = str(child_database)
+            else:
+                transcript_path = None
+        elif parent_file and parent_file.exists():
             session_id = parent_file.stem
             subagent_file = parent_file.parent / session_id / "subagents" / f"agent-{sub.agent_id}.jsonl"
             if subagent_file.exists():
@@ -2437,7 +2711,8 @@ def handle_subagent_ended(event: dict[str, Any], client: Any, project_name: str,
     final_snapshot = sub.prev_usage_snapshot or {}
     if transcript_path and transcript_path.exists():
         turns, final_snapshot = parse_transcript_segment(
-            transcript_path, sub.turn_start_offset, sub.prev_usage_snapshot
+            transcript_path, sub.turn_start_offset, sub.prev_usage_snapshot,
+            session_key=str(child_key), session_id=sub.session_id,
         )
 
     container_start = parse_ts(sub.started_at) if sub.started_at else end_time
@@ -2551,6 +2826,10 @@ def main() -> int:
         debug(f"no sessionKey in event: {event_name}")
         return 0
 
+    transcript_path = _event_transcript_path(event, event_name)
+    if transcript_path is not None:
+        event["sessionFile"] = str(transcript_path)
+
     apply_opik_env_overrides()
 
     # Apply config from plugin (passed via event.config)
@@ -2584,13 +2863,18 @@ def main() -> int:
             global_state = _load_global_state()
             session_key = event.get("sessionKey", "")
             session_file = _normalize_session_file(str(event.get("sessionFile", "")))
-            state_key = resolve_state_key(global_state, session_key, session_file)
+            session_id = str(event.get("sessionId", ""))
+            state_key = resolve_state_key(
+                global_state, session_key, session_file, session_id,
+            )
             prior_completed = False
             sessions = global_state.get("sessions", {})
             if state_key and state_key in sessions:
                 prior_completed = load_session_state(global_state, state_key).completed
             handler(event, client, project_name, global_state)
-            state_key = resolve_state_key(global_state, session_key, session_file)
+            state_key = resolve_state_key(
+                global_state, session_key, session_file, session_id,
+            )
             if state_key and state_key in global_state.get("sessions", {}):
                 session = load_session_state(global_state, state_key)
                 thread_key = _session_thread_key(session, session_key)
