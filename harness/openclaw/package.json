@@ -21,10 +21,13 @@
     "dev": "tsc --watch"
   },
   "devDependencies": {
-    "openclaw": "2026.8.1",
+    "openclaw": "2026.9.2",
     "typescript": "^5.4.0"
   },
   "peerDependencies": {
     "openclaw": "*"
+  },
+  "overrides": {
+    "undici@>=8.0.0 <8.12.2": ">=8.12.2 <9"
   }
 }
